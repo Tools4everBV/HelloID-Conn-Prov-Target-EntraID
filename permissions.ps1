@@ -28,48 +28,36 @@ try{
         Authorization = "Bearer $accesstoken";
         'Content-Type' = "application/json";
         Accept = "application/json";
+        ConsistencyLevel = "eventual";
     }
 
     Write-Verbose -Verbose "Searching for AzureAD groups.."
 
-    #Add the authorization header to the request
-    $authorization = @{
-        Authorization = "Bearer $accesstoken";
-        'Content-Type' = "application/json";
-        Accept = "application/json";
-    }
- 
     $baseSearchUri = "https://graph.microsoft.com/"
-    $searchUri = $baseSearchUri + 'v1.0/groups?$orderby=displayName'
+    $searchUri = $baseSearchUri + 'v1.0/groups' + '?$filter=' + "onPremisesSyncEnabled eq null" + '%26$count=true'
+    $searchUri = [System.Web.HttpUtility]::UrlDecode($searchUri)
 
-    $azureADGroupsResponse = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false
-    [System.Collections.ArrayList]$azureADGroups = $azureADGroupsResponse.value
-    while (![string]::IsNullOrEmpty($azureADGroupsResponse.'@odata.nextLink')) {
-        $azureADGroupsResponse = Invoke-RestMethod -Uri $azureADGroupsResponse.'@odata.nextLink' -Method Get -Headers $authorization -Verbose:$false
-        $null = $azureADGroups.Add($azureADGroupsResponse.value)
-    }    
-    Write-Verbose -Verbose "Finished searching for AzureAD Groups. Found [$($azureADGroups.id.Count) groups]"    
-    
-    #Filter for only Cloud groups, since synced groups can only be managed by the Sync
-    Write-Verbose -Verbose "Filtering for only Cloud groups.."
-    $azureADGroups = foreach($azureADGroup in $azureADGroups){
-        if($azureADGroup.onPremisesSyncEnabled -eq $null){
-            $azureADGroup
+    $response = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false
+    [System.Collections.ArrayList]$groups = $response.value
+    while (![string]::IsNullOrEmpty($response.'@odata.nextLink')) {
+        $response = Invoke-RestMethod -Uri $response.'@odata.nextLink' -Method Get -Headers $authorization -Verbose:$false
+        foreach($item in $response.value){
+            $null = $groups.Add($item)
         }
-    }
-    Write-Verbose -Verbose "Successfully filtered for only Cloud groups. Filtered down to [$($azureADGroups.id.Count) groups]"
+    }    
+    Write-Verbose -Verbose "Finished searching for AzureAD Groups. Found [$($groups.id.Count) groups]"    
 }catch{
     throw "Could not gather Azure AD groups. Error: $_"
 }
 
-$permissions = @(foreach($azureADGroup in $azureADGroups){
+$permissions = @(foreach($group in $groups){
     @{
-        DisplayName = $azureADGroup.displayName;
+      displayName = $group.displayName;
         Identification = @{
-            Id = $azureADGroup.id;
-            Name = $azureADGroup.displayName;
+            Id = $group.id;
+            Name = $group.displayName;
         }
     }
 })
 
-write-output $permissions | ConvertTo-Json -Depth 10;
+Write-output $permissions | ConvertTo-Json -Depth 10;
