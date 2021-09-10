@@ -1,18 +1,20 @@
 <!-- TABLE OF CONTENTS -->
 ## Table of Contents
+- [Table of Contents](#table-of-contents)
 - [Introduction](#introduction)
 - [Getting the Azure AD graph API access](#getting-the-azure-ad-graph-api-access)
-  + [Application Registration](#application-registration)
-  + [Configuring App Permissions](#configuring-app-permissions)
-  + [Authentication and Authorization](#authentication-and-authorization)
-  + [Connection settings](#Connection-settings)
-+ [Getting help](#Getting-help)
-+ [HelloID Docs](#HelloID-Docs)
+  - [Application Registration](#application-registration)
+  - [Configuring App Permissions](#configuring-app-permissions)
+  - [Authentication and Authorization](#authentication-and-authorization)
+  - [Connection settings](#connection-settings)
+- [Getting help](#getting-help)
+- [HelloID Docs](#helloid-docs)
 
 ## Introduction
 The interface to communicate with Microsoft Azure AD is through the Microsoft Graph API. GetConnectors are based on a pre-defined 'data collection', which is an existing view based on the data inside the Profit database.
 
-For this connector we have the option to correlate to existing Azure AD users and provision dynamic groupmemberships.
+For this connector we have the option to correlate to existing Azure AD users and provision (dynamic) groupmemberships.
+  >__Currently only Microsoft 365 and Security groups are supported by the [Microsoft Graph API](https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0)__
 
 If you want to create Azure accounts, please use the built-in Microsoft Azure Active Directory target system.
 
@@ -59,7 +61,7 @@ There are multiple ways to authenticate to the Graph API with each has its own p
 *	Under “Client Secrets” click on the “<b>New Client Secret</b>” button to create a new secret.
 *	Provide a logical name for your secret in the Description field, and select the expiration date for your secret.
 *	It's IMPORTANT to copy the newly generated client secret, because you cannot see the value anymore after you close the page.
-*	At least we need to get is the <b>Tenant ID</b>. This can be found in the Azure Portal by going to <b>Azure Active Directory > Custom Domain Names</b>, and then finding the .onmicrosoft.com domain.
+*	At last we need to get is the <b>Tenant ID</b>. This can be found in the Azure Portal by going to <b>Azure Active Directory > Custom Domain Names</b>, and then finding the .onmicrosoft.com domain.
 
 ### Connection settings
 The following settings are required to connect to the API.
