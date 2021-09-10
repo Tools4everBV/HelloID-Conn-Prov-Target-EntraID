@@ -38,8 +38,7 @@ try{
     $properties = @("id", "displayName", "onPremisesSyncEnabled")
     if ($null -ne $properties) {
         $select = "&`$select=$($properties -join ",")"
-    }
-    else {
+    } else {
         $select = $null
     }
 
@@ -68,7 +67,7 @@ try{
     # Filter Cloud-Only groups (onPremisesSyncEnabled = null) and Security Groups only (https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0)
     $searchUri = $baseSearchUri + "v1.0/groups?`$filter=onPremisesSyncEnabled eq null and mailEnabled eq false and securityEnabled eq true$select"
     # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
-    $searchUri = $searchUri + '&$count=true'
+    $searchUri = $searchUri + "&`$count=true"
 
     $response = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false
     [System.Collections.ArrayList]$securityGroups = $response.value
