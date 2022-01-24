@@ -61,12 +61,16 @@ if(-Not($dryRun -eq $True)) {
         if($_ -like "*Resource '$($pRef.id)' does not exist or one of its queried reference-property objects are not present*"){
             Write-Information "AzureAD user $($aRef) is already no longer a member or AzureAD group $($pRef.Name) ($($pRef.id)) does not exist anymore";
         }else{
-            #$permissionSuccess = $false
             $success = $false
             # Log error for further analysis.  Contact Tools4ever Support to further troubleshoot
             Write-Error "Error revoking Permission to Group $($pRef.Name) ($($pRef.id)). Error: $_"
         }
     }
+    $auditLogs.Add([PSCustomObject]@{
+        Action = "RevokePermission"
+        Message = "Revoked membership: {0}" -f $pRef.Name
+        IsError = -Not $success
+    })
 }
 
 #build up result
