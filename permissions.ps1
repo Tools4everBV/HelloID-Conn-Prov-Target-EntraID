@@ -21,15 +21,15 @@ try{
     }
 
     $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
-    $accessToken = $Response.access_token;
+    $accessToken = $Response.access_token
 
     #Add the authorization header to the request
     $authorization = @{
-        Authorization = "Bearer $accesstoken";
-        'Content-Type' = "application/json";
-        Accept = "application/json";
+        Authorization = "Bearer $accesstoken"
+        'Content-Type' = "application/json"
+        Accept = "application/json"
         # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
-        ConsistencyLevel = "eventual";
+        ConsistencyLevel = "eventual"
     }
 
     # Define the properties to select (comma seperated)
@@ -75,7 +75,7 @@ try{
         foreach($item in $response.value){ $null = $securityGroups.Add($item) }
     }
     Write-Verbose -Verbose "Finished searching for Security Groups. Found [$($securityGroups.id.Count) groups]"
-    foreach($securityGroup in $securityGroups){ 
+    foreach($securityGroup in $securityGroups){
         #Do not show dynamic security groups
         if (-Not ($securityGroup.groupTypes -contains 'DynamicMembership')) {
             $null = $groups.Add($securityGroup)
@@ -89,12 +89,12 @@ try{
 
 $permissions = @(foreach($group in $groups){
     @{
-      displayName = $group.displayName;
+      displayName = $group.displayName
         Identification = @{
-            Id = $group.id;
-            Name = $group.displayName;
+            Id = $group.id
+            Name = $group.displayName
         }
     }
 })
 
-Write-output $permissions | ConvertTo-Json -Depth 10;
+Write-output $permissions | ConvertTo-Json -Depth 10
