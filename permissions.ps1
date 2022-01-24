@@ -35,7 +35,7 @@ try{
     # Define the properties to select (comma seperated)
     # Add optinal popertySelection (mandatory: id,displayName,onPremisesSyncEnabled)
     # Comment out $properties to select all properties
-    $properties = @("id", "displayName", "onPremisesSyncEnabled")
+    $properties = @("id", "displayName", "onPremisesSyncEnabled", "groupTypes")
     if ($null -ne $properties) {
         $select = "&`$select=$($properties -join ",")"
     } else {
@@ -75,7 +75,12 @@ try{
         foreach($item in $response.value){ $null = $securityGroups.Add($item) }
     }
     Write-Verbose -Verbose "Finished searching for Security Groups. Found [$($securityGroups.id.Count) groups]"
-    foreach($securityGroup in $securityGroups){ $null = $groups.Add($securityGroup) }
+    foreach($securityGroup in $securityGroups){ 
+        #Do not show dynamic security groups
+        if (-Not ($securityGroup.groupTypes -contains 'DynamicMembership')) {
+            $null = $groups.Add($securityGroup)
+        }
+    }
 
 } catch {
     throw "Could not gather Azure AD groups. Error: $_"
