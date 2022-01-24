@@ -1,11 +1,8 @@
 #region Initialize default properties
 $config = ConvertFrom-Json $configuration
 $p = $person | ConvertFrom-Json
-$pp = $previousPerson | ConvertFrom-Json
-$pd = $personDifferences | ConvertFrom-Json
-$m = $manager | ConvertFrom-Json
 
-$success = $False
+$success = $false
 $auditLogs = New-Object Collections.Generic.List[PSCustomObject];
 
 # AzureAD Application Parameters #
@@ -21,7 +18,7 @@ $AADAppSecret = $config.AADAppSecret
 # Change mapping here
 $account = [PSCustomObject]@{
     userPrincipalName       = $p.Accounts.MicrosoftActiveDirectory.userPrincipalName
-};
+}
 
 #region Execute
 try{
@@ -38,13 +35,13 @@ try{
     }
 
     $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
-    $accessToken = $Response.access_token;
+    $accessToken = $Response.access_token
 
     #Add the authorization header to the request
     $authorization = @{
-        Authorization = "Bearer $accesstoken";
-        'Content-Type' = "application/json";
-        Accept = "application/json";
+        Authorization = "Bearer $accesstoken"
+        'Content-Type' = "application/json"
+        Accept = "application/json"
     }
 
     $baseGraphUri = "https://graph.microsoft.com/"
@@ -53,37 +50,35 @@ try{
     $response = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false
     $azureUser = $response
 
-    if($azureUser.id -eq $null) { throw "Could not find Azure user $($account.userPrincipalName)" }
+    if ($null -eq $azureUser.id) { throw "Could not find Azure user $($account.userPrincipalName)" }
 
-    Write-Information "Account correlated to $($azureUser.userPrincipalName)";
+    Write-Information "Account correlated to $($azureUser.userPrincipalName)"
     $aRef = $azureUser.id
 
 	$auditLogs.Add([PSCustomObject]@{
                 Action = "CreateAccount"
-                Message = "Account correlated to $($azureUser.userPrincipalName)";
-                IsError = $false;
-            });
-	
-    $success = $true;
-}
-catch
-{
+                Message = "Account correlated to $($azureUser.userPrincipalName)"
+                IsError = $false
+            })
+
+    $success = $true
+} catch {
     $auditLogs.Add([PSCustomObject]@{
                 Action = "CreateAccount"
                 Message = "Account failed to correlate to $($account.userPrincipalName): $_"
                 IsError = $True
-            });
-	Write-Error $_;
+            })
+	Write-Verbose -Verbose "$_"
 }
 #endregion Execute
 
 #region build up result
 $result = [PSCustomObject]@{
-    Success= $success;
+    Success= $success
     AccountReference= $aRef
     AuditLogs = $auditLogs
-    Account = $account;
-};
+    Account = $account
+}
 
 Write-Output $result | ConvertTo-Json -Depth 10
 #endregion build up result

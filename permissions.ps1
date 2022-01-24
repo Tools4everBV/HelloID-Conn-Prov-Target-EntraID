@@ -49,7 +49,7 @@ try{
     # Get Microsoft 365 Groups only (https://docs.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http)
     Write-Verbose -Verbose "Searching for Microsoft 365 groups.."
     $baseSearchUri = "https://graph.microsoft.com/"
-    $searchUri = $baseSearchUri + "v1.0/groups?`$filter=groupTypes/any(c:c+eq+'Unified')$select" 
+    $searchUri = $baseSearchUri + "v1.0/groups?`$filter=groupTypes/any(c:c+eq+'Unified')$select"
 
     $response = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false
     [System.Collections.ArrayList]$microsoft365Groups = $response.value
@@ -59,7 +59,6 @@ try{
     }
     Write-Verbose -Verbose "Finished searching for Microsoft 365 groups. Found [$($microsoft365Groups.id.Count) groups]"
     foreach($microsoft365Group in $microsoft365Groups){ $null = $groups.Add($microsoft365Group) }
-
 
     # Get Security Groups only (https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0)
     Write-Verbose -Verbose "Searching for Security groups.."
@@ -78,7 +77,7 @@ try{
     Write-Verbose -Verbose "Finished searching for Security Groups. Found [$($securityGroups.id.Count) groups]"
     foreach($securityGroup in $securityGroups){ $null = $groups.Add($securityGroup) }
 
-}catch{
+} catch {
     throw "Could not gather Azure AD groups. Error: $_"
 }
 

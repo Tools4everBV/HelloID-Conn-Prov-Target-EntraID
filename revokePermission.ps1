@@ -1,15 +1,12 @@
 #region Initialize default properties
 $config = ConvertFrom-Json $configuration
-$p = $person | ConvertFrom-Json;
-$m = $manager | ConvertFrom-Json;
-$aRef = $accountReference | ConvertFrom-Json;
-$mRef = $managerAccountReference | ConvertFrom-Json;
+$aRef = $accountReference | ConvertFrom-Json
 
 # The permissionReference object contains the Identification object provided in the retrieve permissions call
-$pRef = $permissionReference | ConvertFrom-Json;
+$pRef = $permissionReference | ConvertFrom-Json
 
-$success = $True
-$auditLogs = New-Object Collections.Generic.List[PSCustomObject];
+$success = $true
+$auditLogs = [System.Collections.Generic.List[object]]::new()
 
 # AzureAD Application Parameters #
 $AADtenantID = $config.AADtenantID
@@ -19,10 +16,8 @@ $AADAppSecret = $config.AADAppSecret
 # Set TLS to accept TLS, TLS 1.1 and TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
-# Troubleshooting
-$aRef = "d930a1f8-6b12-4994-81ab-928b2d86a862"
-$dryRun = $false
-
+# Troubleshooting (Enable if needed)
+# $dryRun = $false
 
 #Retrieve account information for notifications
 $account = [PSCustomObject]@{
@@ -53,20 +48,20 @@ if(-Not($dryRun -eq $True)) {
             Accept = "application/json";
         }
 
-        Write-Information "Revoking permission to $($pRef.Name) ($($pRef.id)) for $($aRef)";
+        Write-Information "Revoking permission to $($pRef.Name) ($($pRef.id)) for $($aRef)"
         $baseGraphUri = "https://graph.microsoft.com/"
         $removeGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($pRef.id)/members/$($aRef)" + '/$ref'
 
         $response = Invoke-RestMethod -Method DELETE -Uri $removeGroupMembershipUri -Headers $authorization -Verbose:$false
 
-        Write-Information "Successfully revoked Permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)";
+        Write-Information "Successfully revoked Permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
     }
     catch
     {
         if($_ -like "*Resource '$($pRef.id)' does not exist or one of its queried reference-property objects are not present*"){
             Write-Information "AzureAD user $($aRef) is already no longer a member or AzureAD group $($pRef.Name) ($($pRef.id)) does not exist anymore";
         }else{
-            $permissionSuccess = $False
+            #$permissionSuccess = $false
             $success = $False
             # Log error for further analysis.  Contact Tools4ever Support to further troubleshoot
             Write-Error "Error revoking Permission to Group $($pRef.Name) ($($pRef.id)). Error: $_"
@@ -75,11 +70,11 @@ if(-Not($dryRun -eq $True)) {
 }
 
 #build up result
-$result = [PSCustomObject]@{ 
-    Success= $success;
-    AccountReference = $aRef;
-    AuditLogs = $auditLogs;
-    Account = $account;
+$result = [PSCustomObject]@{
+    Success= $success
+    AccountReference = $aRef
+    AuditLogs = $auditLogs
+    Account = $account
 };
 
-Write-Output $result | ConvertTo-Json -Depth 10;
+Write-Output $result | ConvertTo-Json -Depth 10
