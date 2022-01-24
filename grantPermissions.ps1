@@ -1,6 +1,6 @@
 #region Initialize default properties
 $config = ConvertFrom-Json $configuration
-$aRef = $accountReference | ConvertFrom-Json;
+$aRef = $accountReference | ConvertFrom-Json
 
 # The permissionReference object contains the Identification object provided in the retrieve permissions call
 $pRef = $permissionReference | ConvertFrom-Json;

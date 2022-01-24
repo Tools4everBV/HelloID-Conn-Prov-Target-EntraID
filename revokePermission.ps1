@@ -43,9 +43,9 @@ if(-Not($dryRun -eq $True)) {
 
         #Add the authorization header to the request
         $authorization = @{
-            Authorization = "Bearer $accesstoken";
-            'Content-Type' = "application/json";
-            Accept = "application/json";
+            Authorization = "Bearer $accesstoken"
+            'Content-Type' = "application/json"
+            Accept = "application/json"
         }
 
         Write-Information "Revoking permission to $($pRef.Name) ($($pRef.id)) for $($aRef)"
@@ -62,7 +62,7 @@ if(-Not($dryRun -eq $True)) {
             Write-Information "AzureAD user $($aRef) is already no longer a member or AzureAD group $($pRef.Name) ($($pRef.id)) does not exist anymore";
         }else{
             #$permissionSuccess = $false
-            $success = $False
+            $success = $false
             # Log error for further analysis.  Contact Tools4ever Support to further troubleshoot
             Write-Error "Error revoking Permission to Group $($pRef.Name) ($($pRef.id)). Error: $_"
         }
@@ -75,6 +75,6 @@ $result = [PSCustomObject]@{
     AccountReference = $aRef
     AuditLogs = $auditLogs
     Account = $account
-};
+}
 
 Write-Output $result | ConvertTo-Json -Depth 10
