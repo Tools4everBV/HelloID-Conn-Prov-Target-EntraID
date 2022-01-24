@@ -67,6 +67,7 @@ if (-Not($dryRun -eq $true)) {
             Write-Error "Error Granting Permission to Group $($pRef.Name) ($($pRef.id)). Error: $_"
         }
     }
+    
     $auditLogs.Add([PSCustomObject]@{
         Action = "GrantPermission"
         Message = "Granted membership: {0}" -f $pRef.Name

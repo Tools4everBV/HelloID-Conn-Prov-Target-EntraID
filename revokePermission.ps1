@@ -66,6 +66,7 @@ if(-Not($dryRun -eq $True)) {
             Write-Error "Error revoking Permission to Group $($pRef.Name) ($($pRef.id)). Error: $_"
         }
     }
+    
     $auditLogs.Add([PSCustomObject]@{
         Action = "RevokePermission"
         Message = "Revoked membership: {0}" -f $pRef.Name
