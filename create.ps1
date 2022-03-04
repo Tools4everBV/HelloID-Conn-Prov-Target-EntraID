@@ -3,7 +3,7 @@ $config = ConvertFrom-Json $configuration
 $p = $person | ConvertFrom-Json
 
 $success = $false
-$auditLogs = New-Object Collections.Generic.List[PSCustomObject];
+$auditLogs = [Collections.Generic.List[PSCustomObject]]::new();
 
 # AzureAD Application Parameters #
 $config = ConvertFrom-Json $configuration
@@ -52,12 +52,12 @@ try{
 
     if ($null -eq $azureUser.id) { throw "Could not find Azure user $($account.userPrincipalName)" }
 
-    Write-Information "Account correlated to $($azureUser.userPrincipalName)"
+    Write-Information "Account correlated to $($azureUser.userPrincipalName) ($($azureUser.id))"
     $aRef = $azureUser.id
 
 	$auditLogs.Add([PSCustomObject]@{
                 Action = "CreateAccount"
-                Message = "Account correlated to $($azureUser.userPrincipalName)"
+                Message = "Account correlated to $($azureUser.userPrincipalName) ($($azureUser.id))"
                 IsError = $false
             })
 
