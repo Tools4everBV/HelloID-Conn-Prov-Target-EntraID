@@ -87,14 +87,13 @@ try{
 }
 
 
-$permissions = @(foreach($group in $groups){
-    @{
+ foreach($group in $groups){
+    $permission = @{
       displayName = $group.displayName
         Identification = @{
             Id = $group.id
             Name = $group.displayName
         }
     }
-})
-
-Write-output $permissions | ConvertTo-Json -Depth 10
+    Write-output $permission | ConvertTo-Json -Depth 10
+}
