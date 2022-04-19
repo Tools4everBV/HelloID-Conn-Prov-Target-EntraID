@@ -1,3 +1,10 @@
+<p align="center">
+  <img src="https://user-images.githubusercontent.com/69046642/163958846-a4b9b2f6-9801-4b2b-bbc3-ab35c0d10ca3.png">
+</p>
+
+
+
+
 | :information_source: Information |
 |:---------------------------|
 | This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.       |
