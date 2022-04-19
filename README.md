@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="https://user-images.githubusercontent.com/69046642/163958846-a4b9b2f6-9801-4b2b-bbc3-ab35c0d10ca3.png">
+  <img src="https://user-images.githubusercontent.com/69046642/163960424-94f01a7c-a965-42cb-88d6-bb9eada2d2c6.png">
 </p>
-
-
 
 
 | :information_source: Information |
