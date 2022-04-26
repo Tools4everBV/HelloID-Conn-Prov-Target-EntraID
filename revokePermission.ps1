@@ -25,27 +25,27 @@ $account = [PSCustomObject]@{
 }
 
 # The permissionReference contains the Identification object provided in the retrieve permissions call
-if(-Not($dryRun -eq $True)) {
+if (-Not($dryRun -eq $True)) {
     try {
         Write-Verbose -Verbose "Generating Microsoft Graph API Access Token.."
         $baseAuthUri = "https://login.microsoftonline.com/"
         $authUri = $baseAuthUri + "$AADTenantID/oauth2/token"
 
         $body = @{
-            grant_type      = "client_credentials"
-            client_id       = "$AADAppId"
-            client_secret   = "$AADAppSecret"
-            resource        = "https://graph.microsoft.com"
+            grant_type    = "client_credentials"
+            client_id     = "$AADAppId"
+            client_secret = "$AADAppSecret"
+            resource      = "https://graph.microsoft.com"
         }
 
         $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
-        $accessToken = $Response.access_token;
+        $accessToken = $Response.access_token
 
         #Add the authorization header to the request
         $authorization = @{
-            Authorization = "Bearer $accesstoken"
+            Authorization  = "Bearer $accesstoken"
             'Content-Type' = "application/json"
-            Accept = "application/json"
+            Accept         = "application/json"
         }
 
         Write-Information "Revoking permission to $($pRef.Name) ($($pRef.id)) for $($aRef)"
@@ -54,32 +54,49 @@ if(-Not($dryRun -eq $True)) {
 
         $response = Invoke-RestMethod -Method DELETE -Uri $removeGroupMembershipUri -Headers $authorization -Verbose:$false
 
-        Write-Information "Successfully revoked Permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
+        Write-Information "Successfully revoked permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
+
+        $success = $true
+        $auditLogs.Add([PSCustomObject]@{
+                Action  = "RevokePermission"
+                Message = "Successfully revoked permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
+                IsError = $false
+            }
+        )     
     }
-    catch
-    {
-        if($_ -like "*Resource '$($pRef.id)' does not exist or one of its queried reference-property objects are not present*"){
-            Write-Information "AzureAD user $($aRef) is already no longer a member or AzureAD group $($pRef.Name) ($($pRef.id)) does not exist anymore";
-        }else{
+    catch {
+        if ($_ -like "*Resource '$($pRef.id)' does not exist or one of its queried reference-property objects are not present*") {
+            Write-Information "AzureAD user $($aRef) is already no longer a member or AzureAD group $($pRef.Name) ($($pRef.id)) does not exist anymore"
+
+            $success = $true
+            $auditLogs.Add([PSCustomObject]@{
+                    Action  = "RevokePermission"
+                    Message = "Successfully revoked permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
+                    IsError = $false
+                }
+            )
+        }
+        else {
             $success = $false
+            $auditLogs.Add([PSCustomObject]@{
+                    Action  = "RevokePermission"
+                    Message = "Failed to revoke permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
+                    IsError = $true
+                }
+            )
+
             # Log error for further analysis.  Contact Tools4ever Support to further troubleshoot
             Write-Error "Error revoking Permission to Group $($pRef.Name) ($($pRef.id)). Error: $_"
         }
     }
-    
-    $auditLogs.Add([PSCustomObject]@{
-        Action = "RevokePermission"
-        Message = "Revoked membership: {0}" -f $pRef.Name
-        IsError = -Not $success
-    })
 }
 
 #build up result
 $result = [PSCustomObject]@{
-    Success= $success
+    Success          = $success
     AccountReference = $aRef
-    AuditLogs = $auditLogs
-    Account = $account
+    AuditLogs        = $auditLogs
+    Account          = $account
 }
 
 Write-Output $result | ConvertTo-Json -Depth 10

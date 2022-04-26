@@ -33,10 +33,10 @@ if (-Not($dryRun -eq $true)) {
         $authUri = $baseAuthUri + "$AADTenantID/oauth2/token"
 
         $body = @{
-            grant_type      = "client_credentials"
-            client_id       = "$AADAppId"
-            client_secret   = "$AADAppSecret"
-            resource        = "https://graph.microsoft.com"
+            grant_type    = "client_credentials"
+            client_id     = "$AADAppId"
+            client_secret = "$AADAppSecret"
+            resource      = "https://graph.microsoft.com"
         }
 
         $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
@@ -44,43 +44,61 @@ if (-Not($dryRun -eq $true)) {
 
         #Add the authorization header to the request
         $authorization = @{
-            Authorization = "Bearer $accesstoken"
+            Authorization  = "Bearer $accesstoken"
             'Content-Type' = "application/json"
-            Accept = "application/json"
+            Accept         = "application/json"
         }
 
         Write-Information "Granting permission to $($pRef.Name) ($($pRef.id)) for $($aRef)"
 
         $baseGraphUri = "https://graph.microsoft.com/"
         $addGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($pRef.id)/members" + '/$ref'
-        $body = @{ "@odata.id"= "https://graph.microsoft.com/v1.0/users/$($aRef)" } | ConvertTo-Json -Depth 10
+        $body = @{ "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($aRef)" } | ConvertTo-Json -Depth 10
 
         $response = Invoke-RestMethod -Method POST -Uri $addGroupMembershipUri -Body $body -Headers $authorization -Verbose:$false
-        Write-Information "Successfully granted Permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
-    } catch {
-        if($_ -like "*One or more added object references already exist for the following modified properties*"){
+        Write-Information "Successfully granted permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
+
+        $success = $true
+        $auditLogs.Add([PSCustomObject]@{
+                Action  = "GrantPermission"
+                Message = "Successfully granted permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
+                IsError = $false
+            }
+        )     
+    }
+    catch {
+        if ($_ -like "*One or more added object references already exist for the following modified properties*") {
             Write-Information "AzureAD user $($aRef) is already a member of group $($pRef.Name) ($($pRef.id))"
-        }else{
+
+            $success = $true
+            $auditLogs.Add([PSCustomObject]@{
+                    Action  = "GrantPermission"
+                    Message = "Successfully granted permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
+                    IsError = $false
+                }
+            )
+        }
+        else {
             $success = $false
+            $auditLogs.Add([PSCustomObject]@{
+                    Action  = "GrantPermission"
+                    Message = "Failed to grant permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
+                    IsError = $true
+                }
+            )
 
             # Log error for further analysis.  Contact Tools4ever Support to further troubleshoot
-            Write-Error "Error Granting Permission to Group $($pRef.Name) ($($pRef.id)). Error: $_"
+            Write-Error "Error Granting permission to Group $($pRef.Name) ($($pRef.id)). Error: $_"
         }
     }
-    
-    $auditLogs.Add([PSCustomObject]@{
-        Action = "GrantPermission"
-        Message = "Granted membership: {0}" -f $pRef.Name
-        IsError = -Not $success
-    })
 }
 
 #build up result
 $result = [PSCustomObject]@{
-    Success= $success
+    Success          = $success
     AccountReference = $aRef
-    AuditLogs = $auditLogs
-    Account = $account
+    AuditLogs        = $auditLogs
+    Account          = $account
 }
 
 Write-Output $result | ConvertTo-Json -Depth 10

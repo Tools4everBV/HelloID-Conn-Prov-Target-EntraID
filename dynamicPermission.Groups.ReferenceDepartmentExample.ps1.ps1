@@ -9,8 +9,8 @@ $mRef = $managerAccountReference | ConvertFrom-Json
 $pRef = $entitlementContext | ConvertFrom-json
 
 $success = $True
-$auditLogs = [Collections.Generic.List[PSCustomObject]]::new();
-$dynamicPermissions = [Collections.Generic.List[PSCustomObject]]::new();
+$auditLogs = [Collections.Generic.List[PSCustomObject]]::new()
+$dynamicPermissions = [Collections.Generic.List[PSCustomObject]]::new()
 
 # AzureAD Application Parameters #
 $config = ConvertFrom-Json $configuration
@@ -24,26 +24,24 @@ $azureAdGroupNamePrefix = "Department-"
 $azureAdGroupNameSuffix = ""
 
 #region Supporting Functions
-function Get-ADSanitizeGroupName
-{
+function Get-ADSanitizeGroupName {
     param(
         [parameter(Mandatory = $true)][String]$Name
     )
-    $newName = $name.trim();
+    $newName = $name.trim()
     # $newName = $newName -replace ' - ','_'
-    $newName = $newName -replace '[`,~,!,#,$,%,^,&,*,(,),+,=,<,>,?,/,'',",;,:,\,|,},{,.]',''
-    $newName = $newName -replace '\[','';
-    $newName = $newName -replace ']','';
-    # $newName = $newName -replace ' ','_';
-    $newName = $newName -replace '\.\.\.\.\.','.';
-    $newName = $newName -replace '\.\.\.\.','.';
-    $newName = $newName -replace '\.\.\.','.';
-    $newName = $newName -replace '\.\.','.';
-    return $newName;
+    $newName = $newName -replace '[`,~,!,#,$,%,^,&,*,(,),+,=,<,>,?,/,'',",;,:,\,|,},{,.]', ''
+    $newName = $newName -replace '\[', ''
+    $newName = $newName -replace ']', ''
+    # $newName = $newName -replace ' ','_'
+    $newName = $newName -replace '\.\.\.\.\.', '.'
+    $newName = $newName -replace '\.\.\.\.', '.'
+    $newName = $newName -replace '\.\.\.', '.'
+    $newName = $newName -replace '\.\.', '.'
+    return $newName
 }
 
-function Remove-StringLatinCharacters
-{
+function Remove-StringLatinCharacters {
     PARAM ([string]$String)
     [Text.Encoding]::ASCII.GetString([Text.Encoding]::GetEncoding("Cyrillic").GetBytes($String))
 }
@@ -51,8 +49,9 @@ function Remove-StringLatinCharacters
 
 
 #region Change mapping here
-$desiredPermissions = @{};
+$desiredPermissions = @{}
 foreach ($contract in $p.Contracts) {
+    Write-Verbose ("Contract in condition: {0}" -f $contract.Context.InConditions)
     if (( $contract.Context.InConditions) ) {
         $name = "$azureAdGroupNamePrefix$($contract.Department.ExternalId)$azureAdGroupNameSuffix"  
         $name = Get-ADSanitizeGroupName -Name $name
@@ -62,20 +61,20 @@ foreach ($contract in $p.Contracts) {
         $authUri = $baseAuthUri + "$AADTenantID/oauth2/token"
 
         $body = @{
-            grant_type      = "client_credentials"
-            client_id       = "$AADAppId"
-            client_secret   = "$AADAppSecret"
-            resource        = "https://graph.microsoft.com"
+            grant_type    = "client_credentials"
+            client_id     = "$AADAppId"
+            client_secret = "$AADAppSecret"
+            resource      = "https://graph.microsoft.com"
         }
 
         $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
-        $accessToken = $Response.access_token;
+        $accessToken = $Response.access_token
 
         #Add the authorization header to the request
         $authorization = @{
-            Authorization = "Bearer $accesstoken";
-            'Content-Type' = "application/json";
-            Accept = "application/json";
+            Authorization  = "Bearer $accesstoken"
+            'Content-Type' = "application/json"
+            Accept         = "application/json"
         }
 
         Write-Verbose -Verbose "Searching for Group displayName=$($name)"
@@ -98,7 +97,7 @@ foreach ($contract in $p.Contracts) {
     }
 }
 
-Write-Verbose -Verbose ("Defined Permissions: {0}" -f ($desiredPermissions.keys | ConvertTo-Json))
+Write-Information ("Desired Permissions: {0}" -f ($desiredPermissions.keys | ConvertTo-Json))
 #endregion Change mapping here
 
 #region Execute
@@ -106,144 +105,174 @@ Write-Verbose -Verbose ("Defined Permissions: {0}" -f ($desiredPermissions.keys 
 # It has one of the following values: "grant", "revoke", "update"
 $o = $operation | ConvertFrom-Json
 
-if($dryRun -eq $True) {
+if ($dryRun -eq $True) {
     # Operation is empty for preview (dry run) mode, that's why we set it here.
     $o = "grant"
 }
 
-Write-Verbose -Verbose ("Existing Permissions: {0}" -f $entitlementContext)
+Write-Verbose ("Existing Permissions: {0}" -f $entitlementContext)
 $currentPermissions = @{}
-foreach($permission in $pRef.CurrentPermissions) {
+foreach ($permission in $pRef.CurrentPermissions) {
     $currentPermissions[$permission.Reference.Id] = $permission.DisplayName
 }
 
 # Compare desired with current permissions and grant permissions
-foreach($permission in $desiredPermissions.GetEnumerator()) {
+foreach ($permission in $desiredPermissions.GetEnumerator()) {
     $dynamicPermissions.Add([PSCustomObject]@{
             DisplayName = $permission.Value
-            Reference = [PSCustomObject]@{ Id = $permission.Name }
-    })
+            Reference   = [PSCustomObject]@{ Id = $permission.Name }
+        })
 
-    if(-Not $currentPermissions.ContainsKey($permission.Name))
-    {
-        # Add user to Membership
-        $permissionSuccess = $true
-        
-        if(-Not($dryRun -eq $True))
-        {
-            try
-            {
+    if (-Not $currentPermissions.ContainsKey($permission.Name)) {
+        # Add user to group     
+        if (-Not($dryRun -eq $True)) {
+            try {
                 Write-Verbose -Verbose "Generating Microsoft Graph API Access Token.."
                 $baseAuthUri = "https://login.microsoftonline.com/"
                 $authUri = $baseAuthUri + "$AADTenantID/oauth2/token"
 
                 $body = @{
-                    grant_type      = "client_credentials"
-                    client_id       = "$AADAppId"
-                    client_secret   = "$AADAppSecret"
-                    resource        = "https://graph.microsoft.com"
+                    grant_type    = "client_credentials"
+                    client_id     = "$AADAppId"
+                    client_secret = "$AADAppSecret"
+                    resource      = "https://graph.microsoft.com"
                 }
 
                 $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
-                $accessToken = $Response.access_token;
+                $accessToken = $Response.access_token
 
                 #Add the authorization header to the request
                 $authorization = @{
-                    Authorization = "Bearer $accesstoken";
-                    'Content-Type' = "application/json";
-                    Accept = "application/json";
+                    Authorization  = "Bearer $accesstoken"
+                    'Content-Type' = "application/json"
+                    Accept         = "application/json"
                 }
 
-                Write-Information "Granting permission for [$($aRef)]";
+                Write-Information "Granting permission for [$($aRef)]"
                 $baseGraphUri = "https://graph.microsoft.com/"
                 $addGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($permission.Value)/members" + '/$ref'
-                $body = @{ "@odata.id"= "https://graph.microsoft.com/v1.0/users/$($aRef)" } | ConvertTo-Json -Depth 10
+                $body = @{ "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($aRef)" } | ConvertTo-Json -Depth 10
                 
                 $response = Invoke-RestMethod -Method POST -Uri $addGroupMembershipUri -Body $body -Headers $authorization -Verbose:$false
             
-                Write-Information "Successfully granted Permission for Group [$($permission.Name) ($($permission.Value))] for [$($aRef)]";
+                Write-Information "Successfully granted Permission for Group [$($permission.Name) ($($permission.Value))] for [$($aRef)]"
+
+                $success = $true
+                $auditLogs.Add(
+                    [PSCustomObject]@{
+                        Action  = "GrantDynamicPermission"
+                        Message = "Successfully granted permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
+                        IsError = $true
+                    }
+                )
             }
-            catch
-            {
-                if($_ -like "*One or more added object references already exist for the following modified properties*"){
-                    Write-Information "AzureAD user [$($aRef)] is already a member of group";
-                }else{
-                    $permissionSuccess = $False
-                    $success = $False
-                    # Log error for further analysis.  Contact Tools4ever Support to further troubleshoot
-                    Write-Error ("Error Granting Permission for Group [{0}]:  {1}" -f "$($permission.Name) ($($permission.Value))", $_)
+            catch {
+                if ($_ -like "*One or more added object references already exist for the following modified properties*") {
+                    Write-Information "AzureAD user [$($aRef)] is already a member of group"
+    
+                    $success = $true
+                    $auditLogs.Add(
+                        [PSCustomObject]@{
+                            Action  = "GrantDynamicPermission"
+                            Message = "Successfully granted permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
+                            IsError = $true
+                        }
+                    )                    
                 }
-            }
-        }
-
-        $auditLogs.Add([PSCustomObject]@{
-            Action = "GrantDynamicPermission"
-            Message = "Granted membership: {0}" -f "$($permission.Name) ($($permission.Value))"
-            IsError = -NOT $permissionSuccess
-        })
-    }
-}
-
-# Compare current with desired permissions and revoke permissions
-$newCurrentPermissions = @{}
-foreach($permission in $currentPermissions.GetEnumerator()) {    
-    if(-Not $desiredPermissions.ContainsKey($permission.Name))
-    {
-        # Revoke Membership
-        if(-Not($dryRun -eq $True))
-        {
-            $permissionSuccess = $True
-            try
-            {
-                Write-Verbose -Verbose "Generating Microsoft Graph API Access Token.."
-                $baseAuthUri = "https://login.microsoftonline.com/"
-                $authUri = $baseAuthUri + "$AADTenantID/oauth2/token"
-
-                $body = @{
-                    grant_type      = "client_credentials"
-                    client_id       = "$AADAppId"
-                    client_secret   = "$AADAppSecret"
-                    resource        = "https://graph.microsoft.com"
-                }
-
-                $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
-                $accessToken = $Response.access_token;
-
-                #Add the authorization header to the request
-                $authorization = @{
-                    Authorization = "Bearer $accesstoken";
-                    'Content-Type' = "application/json";
-                    Accept = "application/json";
-                }
-
-                Write-Information "Revoking permission for [$($aRef)]";
-                $baseGraphUri = "https://graph.microsoft.com/"
-                $removeGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($permission.Value)/members/$($aRef)" + '/$ref'
-
-                $response = Invoke-RestMethod -Method DELETE -Uri $removeGroupMembershipUri -Headers $authorization -Verbose:$false
-
-                Write-Information "Successfully revoked Permission for Group [$($permission.Name) ($($permission.Value))] for [$($aRef)]";
-            }
-            catch
-            {
-                if($_ -like "*Resource '$($azureADGroup.id)' does not exist or one of its queried reference-property objects are not present*"){
-                    Write-Information "AzureAD user [$($aRef)] is already no longer a member or AzureAD group does not exist anymore";
-                }else{
-                    $permissionSuccess = $False
-                    $success = $False
+                else {
+                    $success = $false
+                    $auditLogs.Add(
+                        [PSCustomObject]@{
+                            Action  = "GrantDynamicPermission"
+                            Message = "Failed to grant permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
+                            IsError = $true
+                        }
+                    )
+    
                     # Log error for further analysis.  Contact Tools4ever Support to further troubleshoot.
-                    Write-Error ("Error Revoking Permission from Group [{0}]:  {1}" -f "$($permission.Name) ($($permission.Value))", $_)
+                    Write-Error "Error granting permission to Group $($permission.Name) ($($permission.Value)). Error $_"
                 }
             }
         }
-            
-        $auditLogs.Add([PSCustomObject]@{
-            Action = "RevokeDynamicPermission"
-            Message = "Revoked membership: {0}" -f "$($permission.Name) ($($permission.Value))"
-            IsError = -Not $permissionSuccess
-        })
-    } else {
-        $newCurrentPermissions[$permission.Name] = $permission.Value
+    }
+
+    # Compare current with desired permissions and revoke permissions
+    $newCurrentPermissions = @{}
+    foreach ($permission in $currentPermissions.GetEnumerator()) {    
+        if (-Not $desiredPermissions.ContainsKey($permission.Name)) {
+            # Remove user from group
+            if (-Not($dryRun -eq $True)) {
+                try {
+                    Write-Verbose -Verbose "Generating Microsoft Graph API Access Token.."
+                    $baseAuthUri = "https://login.microsoftonline.com/"
+                    $authUri = $baseAuthUri + "$AADTenantID/oauth2/token"
+
+                    $body = @{
+                        grant_type    = "client_credentials"
+                        client_id     = "$AADAppId"
+                        client_secret = "$AADAppSecret"
+                        resource      = "https://graph.microsoft.com"
+                    }
+
+                    $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
+                    $accessToken = $Response.access_token
+
+                    #Add the authorization header to the request
+                    $authorization = @{
+                        Authorization  = "Bearer $accesstoken"
+                        'Content-Type' = "application/json"
+                        Accept         = "application/json"
+                    }
+
+                    Write-Information "Revoking permission for [$($aRef)]"
+                    $baseGraphUri = "https://graph.microsoft.com/"
+                    $removeGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($permission.Value)/members/$($aRef)" + '/$ref'
+
+                    $response = Invoke-RestMethod -Method DELETE -Uri $removeGroupMembershipUri -Headers $authorization -Verbose:$false
+
+                    Write-Information "Successfully revoked permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
+
+                    $success = $true
+                    $auditLogs.Add(
+                        [PSCustomObject]@{
+                            Action  = "RevokeDynamicPermission"
+                            Message = "Successfully revoked permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
+                            IsError = $true
+                        }
+                    )
+                }
+                catch {
+                    if ($_ -like "*Resource '$($azureADGroup.id)' does not exist or one of its queried reference-property objects are not present*") {
+                        Write-Information "AzureAD user [$($aRef)] is already no longer a member or AzureAD group does not exist anymore"
+
+                        $success = $true
+                        $auditLogs.Add(
+                            [PSCustomObject]@{
+                                Action  = "RevokeDynamicPermission"
+                                Message = "Successfully revoked permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
+                                IsError = $true
+                            }
+                        )                    
+                    }
+                    else {
+                        $success = $false
+                        $auditLogs.Add(
+                            [PSCustomObject]@{
+                                Action  = "RevokeDynamicPermission"
+                                Message = "Failed to revoke permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
+                                IsError = $true
+                            }
+                        )
+
+                        # Log error for further analysis.  Contact Tools4ever Support to further troubleshoot.
+                        Write-Error "Error revoking permission to Group $($permission.Name) ($($permission.Value)). Error $_"
+                    }
+                }
+            }
+        }
+        else {
+            $newCurrentPermissions[$permission.Name] = $permission.Value
+        }
     }
 }
 
@@ -263,9 +292,9 @@ if ($o -eq "update") {
 
 #region Build up result
 $result = [PSCustomObject]@{
-    Success = $success;
-    DynamicPermissions = $dynamicPermissions;
-    AuditLogs = $auditLogs;
-};
-Write-Output $result | ConvertTo-Json -Depth 10;
+    Success            = $success
+    DynamicPermissions = $dynamicPermissions
+    AuditLogs          = $auditLogs
+}
+Write-Output $result | ConvertTo-Json -Depth 10
 #endregion Build up result
