@@ -8,16 +8,16 @@ $AADAppSecret = $config.AADAppSecret
 # Set TLS to accept TLS, TLS 1.1 and TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
-try{
+try {
     Write-Verbose -Verbose "Generating Microsoft Graph API Access Token.."
     $baseUri = "https://login.microsoftonline.com/"
     $authUri = $baseUri + "$AADTenantID/oauth2/token"
 
     $body = @{
-        grant_type      = "client_credentials"
-        client_id       = "$AADAppId"
-        client_secret   = "$AADAppSecret"
-        resource        = "https://graph.microsoft.com"
+        grant_type    = "client_credentials"
+        client_id     = "$AADAppId"
+        client_secret = "$AADAppSecret"
+        resource      = "https://graph.microsoft.com"
     }
 
     $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
@@ -25,9 +25,9 @@ try{
 
     #Add the authorization header to the request
     $authorization = @{
-        Authorization = "Bearer $accesstoken"
-        'Content-Type' = "application/json"
-        Accept = "application/json"
+        Authorization    = "Bearer $accesstoken"
+        'Content-Type'   = "application/json"
+        Accept           = "application/json"
         # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
         ConsistencyLevel = "eventual"
     }
@@ -38,7 +38,8 @@ try{
     $properties = @("id", "displayName", "onPremisesSyncEnabled", "groupTypes")
     if ($null -ne $properties) {
         $select = "&`$select=$($properties -join ",")"
-    } else {
+    }
+    else {
         $select = $null
     }
 
@@ -55,10 +56,10 @@ try{
     [System.Collections.ArrayList]$microsoft365Groups = $response.value
     while (![string]::IsNullOrEmpty($response.'@odata.nextLink')) {
         $response = Invoke-RestMethod -Uri $response.'@odata.nextLink' -Method Get -Headers $authorization -Verbose:$false
-        foreach($item in $response.value){ $null = $microsoft365Groups.Add($item) }
+        foreach ($item in $response.value) { $null = $microsoft365Groups.Add($item) }
     }
     Write-Verbose -Verbose "Finished searching for Microsoft 365 groups. Found [$($microsoft365Groups.id.Count) groups]"
-    foreach($microsoft365Group in $microsoft365Groups){ $null = $groups.Add($microsoft365Group) }
+    foreach ($microsoft365Group in $microsoft365Groups) { $null = $groups.Add($microsoft365Group) }
 
     # Get Security Groups only (https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0)
     Write-Verbose -Verbose "Searching for Security groups.."
@@ -72,26 +73,27 @@ try{
     [System.Collections.ArrayList]$securityGroups = $response.value
     while (![string]::IsNullOrEmpty($response.'@odata.nextLink')) {
         $response = Invoke-RestMethod -Uri $response.'@odata.nextLink' -Method Get -Headers $authorization -Verbose:$false
-        foreach($item in $response.value){ $null = $securityGroups.Add($item) }
+        foreach ($item in $response.value) { $null = $securityGroups.Add($item) }
     }
     Write-Verbose -Verbose "Finished searching for Security Groups. Found [$($securityGroups.id.Count) groups]"
-    foreach($securityGroup in $securityGroups){
+    foreach ($securityGroup in $securityGroups) {
         #Do not show dynamic security groups
         if (-Not ($securityGroup.groupTypes -contains 'DynamicMembership')) {
             $null = $groups.Add($securityGroup)
         }
     }
 
-} catch {
+}
+catch {
     throw "Could not gather Azure AD groups. Error: $_"
 }
 
 
- foreach($group in $groups){
+foreach ($group in $groups) {
     $permission = @{
-      displayName = $group.displayName
+        displayName    = $group.displayName
         Identification = @{
-            Id = $group.id
+            Id   = $group.id
             Name = $group.displayName
         }
     }
