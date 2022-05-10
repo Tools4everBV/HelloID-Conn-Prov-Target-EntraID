@@ -19,8 +19,8 @@ $AADtenantID = $config.AADtenantID
 $AADAppId = $config.AADAppId
 $AADAppSecret = $config.AADAppSecret
 
-# Name format: Department-<department code>
-$azureAdGroupNamePrefix = "Department-"
+# Name format: Profession-<department code>
+$azureAdGroupNamePrefix = "Profession-"
 $azureAdGroupNameSuffix = ""
 
 #region Supporting Functions
@@ -53,7 +53,7 @@ $desiredPermissions = @{}
 foreach ($contract in $p.Contracts) {
     Write-Verbose ("Contract in condition: {0}" -f $contract.Context.InConditions)
     if (( $contract.Context.InConditions) ) {
-        $name = "$azureAdGroupNamePrefix$($contract.Title.Name)$azureAdGroupNameSuffix" 
+        $name = "$azureAdGroupNamePrefix$($contract.Title.ExternalId)$azureAdGroupNameSuffix" 
         $name = Get-ADSanitizeGroupName -Name $name
 
         Write-Verbose -Verbose "Generating Microsoft Graph API Access Token.."
@@ -148,7 +148,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                     Accept         = "application/json"
                 }
 
-                Write-Information "Granting permission for [$($aRef)]"
+                Write-Verbose "Adding user: $($aRef) to group: $($permission.Value)"
                 $baseGraphUri = "https://graph.microsoft.com/"
                 $addGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($permission.Value)/members" + '/$ref'
                 $body = @{ "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($aRef)" } | ConvertTo-Json -Depth 10
@@ -224,7 +224,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                         Accept         = "application/json"
                     }
 
-                    Write-Information "Revoking permission for [$($aRef)]"
+                    Write-Verbose "Removing user: $($aRef) from group: $($permission.Value)"
                     $baseGraphUri = "https://graph.microsoft.com/"
                     $removeGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($permission.Value)/members/$($aRef)" + '/$ref'
 
