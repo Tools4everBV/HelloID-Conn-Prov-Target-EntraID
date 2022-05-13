@@ -79,7 +79,7 @@ foreach ($contract in $p.Contracts) {
             Accept             = "application/json"
         }
 
-        Write-Verbose "Searching for Group where displayName contains: $($name)"
+        Write-Verbose "Searching for Group displayName=$($name)"
         $baseSearchUri = "https://graph.microsoft.com/"
         $searchUri = $baseSearchUri + 'v1.0/groups?$filter=displayName+eq+' + "'$($name)'"
 

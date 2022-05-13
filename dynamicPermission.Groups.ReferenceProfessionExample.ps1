@@ -1,3 +1,7 @@
+$VerbosePreference = "SilentlyContinue"
+$InformationPreference = "Continue"
+$WarningPreference = "Continue"
+
 #region Initialize default properties
 $config = ConvertFrom-Json $configuration
 $p = $person | ConvertFrom-Json
@@ -19,21 +23,17 @@ $AADtenantID = $config.AADtenantID
 $AADAppId = $config.AADAppId
 $AADAppSecret = $config.AADAppSecret
 
-# Name format: Profession-<department code>
-$azureAdGroupNamePrefix = "Profession-"
-$azureAdGroupNameSuffix = ""
-
 #region Supporting Functions
 function Get-ADSanitizeGroupName {
     param(
         [parameter(Mandatory = $true)][String]$Name
     )
     $newName = $name.trim()
-    # $newName = $newName -replace ' - ','_'
+    $newName = $newName -replace ' - ','_'
     $newName = $newName -replace '[`,~,!,#,$,%,^,&,*,(,),+,=,<,>,?,/,'',",;,:,\,|,},{,.]', ''
     $newName = $newName -replace '\[', ''
     $newName = $newName -replace ']', ''
-    # $newName = $newName -replace ' ','_'
+    $newName = $newName -replace ' ','_'
     $newName = $newName -replace '\.\.\.\.\.', '.'
     $newName = $newName -replace '\.\.\.\.', '.'
     $newName = $newName -replace '\.\.\.', '.'
@@ -53,7 +53,8 @@ $desiredPermissions = @{}
 foreach ($contract in $p.Contracts) {
     Write-Verbose ("Contract in condition: {0}" -f $contract.Context.InConditions)
     if (( $contract.Context.InConditions) ) {
-        $name = "$azureAdGroupNamePrefix$($contract.Title.ExternalId)$azureAdGroupNameSuffix" 
+        # Name format: Profession-<profession code>
+        $name = "Profession-$($contract.Title.ExternalId)" 
         $name = Get-ADSanitizeGroupName -Name $name
 
         Write-Verbose -Verbose "Generating Microsoft Graph API Access Token.."
@@ -72,12 +73,12 @@ foreach ($contract in $p.Contracts) {
 
         #Add the authorization header to the request
         $authorization = @{
-            Authorization  = "Bearer $accesstoken"
-            'Content-Type' = "application/json"
-            Accept         = "application/json"
+            Authorization      = "Bearer $accesstoken"
+            'Content-Type'     = "application/json"
+            Accept             = "application/json"
         }
 
-        Write-Verbose -Verbose "Searching for Group displayName=$($name)"
+        Write-Verbose "Searching for Group displayName=$($name)"
         $baseSearchUri = "https://graph.microsoft.com/"
         $searchUri = $baseSearchUri + 'v1.0/groups?$filter=displayName+eq+' + "'$($name)'"
 
@@ -85,10 +86,10 @@ foreach ($contract in $p.Contracts) {
         $azureADGroup = $azureADGroupResponse.value    
 
         if ($azureADGroup.Id.count -eq 0) {
-            throw "No Group found with name: $name"
+            Write-Error "No Group found with name: $name"
         }
         elseif ($azureADGroup.Id.count -gt 1) {
-            throw "Multiple Groups found with name: $name . Please correct this so the name is unique."
+            Write-Error "Multiple Groups found with name: $name . Please correct this so the name is unique."
         }
  
         $group_DisplayName = $azureADGroup.displayName
@@ -127,7 +128,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
         # Add user to group     
         if (-Not($dryRun -eq $True)) {
             try {
-                Write-Verbose -Verbose "Generating Microsoft Graph API Access Token.."
+                Write-Verbose "Generating Microsoft Graph API Access Token.."
                 $baseAuthUri = "https://login.microsoftonline.com/"
                 $authUri = $baseAuthUri + "$AADTenantID/oauth2/token"
 
@@ -148,7 +149,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                     Accept         = "application/json"
                 }
 
-                Write-Verbose "Adding user: $($aRef) to group: $($permission.Value)"
+                Write-Information "Granting permission for [$($aRef)]"
                 $baseGraphUri = "https://graph.microsoft.com/"
                 $addGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($permission.Value)/members" + '/$ref'
                 $body = @{ "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($aRef)" } | ConvertTo-Json -Depth 10
@@ -162,7 +163,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                     [PSCustomObject]@{
                         Action  = "GrantDynamicPermission"
                         Message = "Successfully granted permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
-                        IsError = $true
+                        IsError = $false
                     }
                 )
             }
@@ -175,7 +176,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                         [PSCustomObject]@{
                             Action  = "GrantDynamicPermission"
                             Message = "Successfully granted permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
-                            IsError = $true
+                            IsError = $false
                         }
                     )                    
                 }
@@ -203,7 +204,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
             # Remove user from group
             if (-Not($dryRun -eq $True)) {
                 try {
-                    Write-Verbose -Verbose "Generating Microsoft Graph API Access Token.."
+                    Write-Verbose "Generating Microsoft Graph API Access Token.."
                     $baseAuthUri = "https://login.microsoftonline.com/"
                     $authUri = $baseAuthUri + "$AADTenantID/oauth2/token"
 
@@ -224,7 +225,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                         Accept         = "application/json"
                     }
 
-                    Write-Verbose "Removing user: $($aRef) from group: $($permission.Value)"
+                    Write-Information "Revoking permission for [$($aRef)]"
                     $baseGraphUri = "https://graph.microsoft.com/"
                     $removeGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($permission.Value)/members/$($aRef)" + '/$ref'
 
@@ -237,7 +238,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                         [PSCustomObject]@{
                             Action  = "RevokeDynamicPermission"
                             Message = "Successfully revoked permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
-                            IsError = $true
+                            IsError = $false
                         }
                     )
                 }
@@ -250,7 +251,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                             [PSCustomObject]@{
                                 Action  = "RevokeDynamicPermission"
                                 Message = "Successfully revoked permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
-                                IsError = $true
+                                IsError = $false
                             }
                         )                    
                     }
@@ -275,6 +276,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
         }
     }
 }
+
 # Update current permissions
 <# Updates not needed for Group Memberships.
 if ($o -eq "update") {
