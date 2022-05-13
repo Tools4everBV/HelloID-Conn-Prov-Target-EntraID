@@ -1,3 +1,7 @@
+$VerbosePreference = "Continue"
+$InformationPreference = "Continue"
+$WarningPreference = "Continue"
+
 #region Initialize default properties
 $config = ConvertFrom-Json $configuration
 $p = $person | ConvertFrom-Json
@@ -19,21 +23,17 @@ $AADtenantID = $config.AADtenantID
 $AADAppId = $config.AADAppId
 $AADAppSecret = $config.AADAppSecret
 
-# Name format: Department-<department code>
-$azureAdGroupNamePrefix = "Department-"
-$azureAdGroupNameSuffix = ""
-
 #region Supporting Functions
 function Get-ADSanitizeGroupName {
     param(
         [parameter(Mandatory = $true)][String]$Name
     )
     $newName = $name.trim()
-    # $newName = $newName -replace ' - ','_'
+    $newName = $newName -replace ' - ','_'
     $newName = $newName -replace '[`,~,!,#,$,%,^,&,*,(,),+,=,<,>,?,/,'',",;,:,\,|,},{,.]', ''
     $newName = $newName -replace '\[', ''
     $newName = $newName -replace ']', ''
-    # $newName = $newName -replace ' ','_'
+    $newName = $newName -replace ' ','_'
     $newName = $newName -replace '\.\.\.\.\.', '.'
     $newName = $newName -replace '\.\.\.\.', '.'
     $newName = $newName -replace '\.\.\.', '.'
@@ -53,8 +53,8 @@ $desiredPermissions = @{}
 foreach ($contract in $p.Contracts) {
     Write-Verbose ("Contract in condition: {0}" -f $contract.Context.InConditions)
     if (( $contract.Context.InConditions) ) {
-        $name = "$azureAdGroupNamePrefix$($contract.Department.ExternalId)$azureAdGroupNameSuffix"  
-        $name = Get-ADSanitizeGroupName -Name $name
+        # Name format: contains [CostCenter.ExternalId]
+        $name = "[$($contract.CostCenter.ExternalId)]"
 
         Write-Verbose -Verbose "Generating Microsoft Graph API Access Token.."
         $baseAuthUri = "https://login.microsoftonline.com/"
@@ -72,12 +72,12 @@ foreach ($contract in $p.Contracts) {
 
         #Add the authorization header to the request
         $authorization = @{
-            Authorization  = "Bearer $accesstoken"
-            'Content-Type' = "application/json"
-            Accept         = "application/json"
+            Authorization      = "Bearer $accesstoken"
+            'Content-Type'     = "application/json"
+            Accept             = "application/json"
         }
 
-        Write-Verbose -Verbose "Searching for Group displayName=$($name)"
+        Write-Verbose "Searching for Group where displayName contains: $($name)"
         $baseSearchUri = "https://graph.microsoft.com/"
         $searchUri = $baseSearchUri + 'v1.0/groups?$filter=displayName+eq+' + "'$($name)'"
 
@@ -85,10 +85,10 @@ foreach ($contract in $p.Contracts) {
         $azureADGroup = $azureADGroupResponse.value    
 
         if ($azureADGroup.Id.count -eq 0) {
-            throw "No Group found with name: $name"
+            Write-Error "No Group found with name: $name"
         }
         elseif ($azureADGroup.Id.count -gt 1) {
-            throw "Multiple Groups found with name: $name . Please correct this so the name is unique."
+            Write-Error "Multiple Groups found with name: $name . Please correct this so the name is unique."
         }
  
         $group_DisplayName = $azureADGroup.displayName
@@ -127,7 +127,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
         # Add user to group     
         if (-Not($dryRun -eq $True)) {
             try {
-                Write-Verbose -Verbose "Generating Microsoft Graph API Access Token.."
+                Write-Verbose "Generating Microsoft Graph API Access Token.."
                 $baseAuthUri = "https://login.microsoftonline.com/"
                 $authUri = $baseAuthUri + "$AADTenantID/oauth2/token"
 
@@ -203,7 +203,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
             # Remove user from group
             if (-Not($dryRun -eq $True)) {
                 try {
-                    Write-Verbose -Verbose "Generating Microsoft Graph API Access Token.."
+                    Write-Verbose "Generating Microsoft Graph API Access Token.."
                     $baseAuthUri = "https://login.microsoftonline.com/"
                     $authUri = $baseAuthUri + "$AADTenantID/oauth2/token"
 
