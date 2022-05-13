@@ -1,4 +1,4 @@
-$VerbosePreference = "Continue"
+$VerbosePreference = "SilentlyContinue"
 $InformationPreference = "Continue"
 $WarningPreference = "Continue"
 
@@ -55,6 +55,8 @@ foreach ($contract in $p.Contracts) {
     if (( $contract.Context.InConditions) ) {
         # Name format: contains [CostCenter.ExternalId]
         $name = "[$($contract.CostCenter.ExternalId)]"
+        # No need to sanitize groupname
+        # $name = Get-ADSanitizeGroupName -Name $name
 
         Write-Verbose -Verbose "Generating Microsoft Graph API Access Token.."
         $baseAuthUri = "https://login.microsoftonline.com/"
@@ -162,7 +164,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                     [PSCustomObject]@{
                         Action  = "GrantDynamicPermission"
                         Message = "Successfully granted permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
-                        IsError = $true
+                        IsError = $false
                     }
                 )
             }
@@ -175,7 +177,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                         [PSCustomObject]@{
                             Action  = "GrantDynamicPermission"
                             Message = "Successfully granted permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
-                            IsError = $true
+                            IsError = $false
                         }
                     )                    
                 }
@@ -237,7 +239,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                         [PSCustomObject]@{
                             Action  = "RevokeDynamicPermission"
                             Message = "Successfully revoked permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
-                            IsError = $true
+                            IsError = $false
                         }
                     )
                 }
@@ -250,7 +252,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                             [PSCustomObject]@{
                                 Action  = "RevokeDynamicPermission"
                                 Message = "Successfully revoked permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
-                                IsError = $true
+                                IsError = $false
                             }
                         )                    
                     }
