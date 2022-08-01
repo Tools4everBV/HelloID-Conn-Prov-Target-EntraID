@@ -17,11 +17,6 @@ $AADAppSecret = $config.AADAppSecret
 # Set TLS to accept TLS, TLS 1.1 and TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
-#Retrieve account information for notifications
-$account = [PSCustomObject]@{
-    id = $aRef
-}
-
 # Troubleshooting (Enable if needed)
 # $account = [PSCustomObject]@{
 #     id = '028c2b52-d7b3-4e91-9929-ec13aa556efb'
@@ -31,6 +26,11 @@ $account = [PSCustomObject]@{
 #     Name = "Azure Security Group"
 # }
 # $dryRun = $false
+
+#Retrieve account information for notifications
+$account = [PSCustomObject]@{
+    id = $aRef
+}
 
 try {
     Write-Verbose -Verbose "Generating Microsoft Graph API Access Token.."
@@ -49,51 +49,80 @@ try {
 
     #Add the authorization header to the request
     $authorization = @{
-        Authorization  = "Bearer $accesstoken"
-        'Content-Type' = "application/json"
-        Accept         = "application/json"
+        Authorization    = "Bearer $accesstoken"
+        'Content-Type'   = "application/json"
+        Accept           = "application/json"
         # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
         ConsistencyLevel = "eventual";
     }
 
     Write-Information "Granting permission to $($pRef.Name) ($($pRef.id)) for $($aRef)"
 
-    # Check if user is already a member of group (error 400 will occur when user is already a member)
-    $baseGraphUri = "https://graph.microsoft.com/"
-    $getGroupMembershipUri = $baseGraphUri + "/v1.0/users/$($aRef)/memberOf?`$filter=id eq '$($pRef.id)'&`$count=true" 
-    Write-Information ($getGroupMembershipUri | Out-String)
-    $isMemberOfGroup = Invoke-RestMethod -Method GET -Uri $getGroupMembershipUri -Headers $authorization -Verbose:$false
+    # Check if user still exists (error 404 will occur when user is not found)
+    try {
+        $baseGraphUri = "https://graph.microsoft.com/"
+        $getUserUri = $baseGraphUri + "/v1.0/users/$($aRef)" 
+        $user = Invoke-RestMethod -Method GET -Uri $getUserUri -Headers $authorization -Verbose:$false
+    }
+    catch {
+        if ($_ -like "*(404) Not Found*") {
+            $user = $null
+        }
+        else {
+            Write-Error "Error querying Azure AD user $($aRef). Error: $_" 
+        }
+    }
+    
+    if ($null -eq $user -or $user.id.Count -eq 0) {
+        Write-Warning "AzureAD user $($aRef) is not found in Azure."
 
-    if($null -ne $isMemberOfGroup.Value -and $isMemberOfGroup.Value.Count -ne 0){
-        Write-Information "AzureAD user $($aRef) is already a member of group $($pRef.Name) ($($pRef.id))"
-
-        $success = $true
+        $success = $false
         $auditLogs.Add([PSCustomObject]@{
                 Action  = "GrantPermission"
-                Message = "Successfully granted permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef) (already a member)"
-                IsError = $false
+                Message = "Failed to grant permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef). Error: User with id '$($aRef)' not found."
+                IsError = $true
             }
         )
-    }else{
-        if (-Not($dryRun -eq $true)) {
-            $baseGraphUri = "https://graph.microsoft.com/"
-            $addGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($pRef.id)/members" + '/$ref'
-            $body = @{ "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($aRef)" } | ConvertTo-Json -Depth 10
+    }
+    else {
+        # Check if user is already a member of group (error 400 will occur when user is already a member)
+        $baseGraphUri = "https://graph.microsoft.com/"
+        $getGroupMembershipUri = $baseGraphUri + "/v1.0/users/$($aRef)/memberOf?`$filter=id eq '$($pRef.id)'&`$count=true" 
+        $isMemberOfGroup = Invoke-RestMethod -Method GET -Uri $getGroupMembershipUri -Headers $authorization -Verbose:$false
 
-            $response = Invoke-RestMethod -Method POST -Uri $addGroupMembershipUri -Body $body -Headers $authorization -Verbose:$false
-            Write-Information "Successfully granted permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
-        }else{
-            Write-Information $addGroupMembershipUri
-            Write-Information $body
+        if ($null -ne $isMemberOfGroup.Value -and $isMemberOfGroup.Value.Count -ne 0) {
+            Write-Warning "AzureAD user $($aRef) is already a member of group $($pRef.Name) ($($pRef.id))"
+
+            $success = $true
+            $auditLogs.Add([PSCustomObject]@{
+                    Action  = "GrantPermission"
+                    Message = "Successfully granted permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef) (already a member)"
+                    IsError = $false
+                }
+            )
         }
-    
-        $success = $true
-        $auditLogs.Add([PSCustomObject]@{
-                Action  = "GrantPermission"
-                Message = "Successfully granted permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
-                IsError = $false
+        else {
+            if (-Not($dryRun -eq $true)) {
+                $baseGraphUri = "https://graph.microsoft.com/"
+                $addGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($pRef.id)/members" + '/$ref'
+                $body = @{ "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($aRef)" } | ConvertTo-Json -Depth 10
+
+                $response = Invoke-RestMethod -Method POST -Uri $addGroupMembershipUri -Body $body -Headers $authorization -Verbose:$false
+                Write-Information "Successfully granted permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
             }
-        )     
+            else {
+                Write-Information $addGroupMembershipUri
+                Write-Information $body
+            }
+        
+            $success = $true
+            $auditLogs.Add([PSCustomObject]@{
+                    Action  = "GrantPermission"
+                    Message = "Successfully granted permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
+                    IsError = $false
+                }
+            )     
+        }
     }
 }
 catch {
@@ -118,7 +147,7 @@ catch {
         )
 
         # Log error for further analysis.  Contact Tools4ever Support to further troubleshoot
-        Write-Error "Error Granting permission to Group $($pRef.Name) ($($pRef.id)). Error: $_"
+        Write-Error "Error Granting permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef). Error: $_"
     }
 }
 

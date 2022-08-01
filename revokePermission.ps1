@@ -17,11 +17,6 @@ $AADAppSecret = $config.AADAppSecret
 # Set TLS to accept TLS, TLS 1.1 and TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
-#Retrieve account information for notifications
-$account = [PSCustomObject]@{
-    id = $aRef
-}
-
 # Troubleshooting (Enable if needed)
 # $account = [PSCustomObject]@{
 #     id = '028c2b52-d7b3-4e91-9929-ec13aa556efb'
@@ -31,6 +26,11 @@ $account = [PSCustomObject]@{
 #     Name = "Azure Security Group"
 # }
 # $dryRun = $false
+
+#Retrieve account information for notifications
+$account = [PSCustomObject]@{
+    id = $aRef
+}
 
 try {
     Write-Verbose -Verbose "Generating Microsoft Graph API Access Token.."
@@ -50,51 +50,80 @@ try {
 
     #Add the authorization header to the request
     $authorization = @{
-        Authorization  = "Bearer $accesstoken"
-        'Content-Type' = "application/json"
-        Accept         = "application/json"
+        Authorization    = "Bearer $accesstoken"
+        'Content-Type'   = "application/json"
+        Accept           = "application/json"
         # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
         ConsistencyLevel = "eventual";
     }
 
     Write-Information "Revoking permission to $($pRef.Name) ($($pRef.id)) for $($aRef)"
 
-    # Check if user is already a member of group (error 400 will occur when user is already a member)
-    $baseGraphUri = "https://graph.microsoft.com/"
-    $getGroupMembershipUri = $baseGraphUri + "/v1.0/users/$($aRef)/memberOf?`$filter=id eq '$($pRef.id)'&`$count=true" 
-    Write-Information ($getGroupMembershipUri | Out-String)
-    $isMemberOfGroup = Invoke-RestMethod -Method GET -Uri $getGroupMembershipUri -Headers $authorization -Verbose:$false
-
-    if($null -eq $isMemberOfGroup.Value -or $isMemberOfGroup.Value.Count -eq 0){
-        Write-Information "AzureAD user $($aRef) is is already no longer a member of group $($pRef.Name) ($($pRef.id))"
+    # Check if user still exists (error 404 will occur when user is not found)
+    try {
+        $baseGraphUri = "https://graph.microsoft.com/"
+        $getUserUri = $baseGraphUri + "/v1.0/users/$($aRef)" 
+        $user = Invoke-RestMethod -Method GET -Uri $getUserUri -Headers $authorization -Verbose:$false
+    }
+    catch {
+        if ($_ -like "*(404) Not Found*") {
+            $user = $null
+        }
+        else {
+            Write-Error "Error querying Azure AD user $($aRef). Error: $_" 
+        }
+    }
+    
+    if ($null -eq $user -or $user.id.Count -eq 0) {
+        Write-Warning "AzureAD user $($aRef) is not found in Azure. Possibly no longer exists. Skipping action"
 
         $success = $true
         $auditLogs.Add([PSCustomObject]@{
                 Action  = "RevokePermission"
-                Message = "Successfully revoked permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef) (already no longer a member)"
+                Message = "Successfully revoked permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef) (user no longer exists)"
                 IsError = $false
             }
         )
-    }else{
-        if (-Not($dryRun -eq $true)) {
-            $baseGraphUri = "https://graph.microsoft.com/"
-            $removeGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($pRef.id)/members/$($aRef)" + '/$ref'
-
-            $response = Invoke-RestMethod -Method DELETE -Uri $removeGroupMembershipUri -Headers $authorization -Verbose:$false
-            Write-Information "Successfully revoked permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
-        }else{
-            Write-Information $removeGroupMembershipUri
-            Write-Information $body
-        }
-
-        $success = $true
-        $auditLogs.Add([PSCustomObject]@{
-                Action  = "RevokePermission"
-                Message = "Successfully revoked permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
-                IsError = $false
-            }
-        )      
     }
+    else {
+        # Check if user is already a member of group (error 400 will occur when user is already a member)
+        $baseGraphUri = "https://graph.microsoft.com/"
+        $getGroupMembershipUri = $baseGraphUri + "/v1.0/users/$($aRef)/memberOf?`$filter=id eq '$($pRef.id)'&`$count=true" 
+        $isMemberOfGroup = Invoke-RestMethod -Method GET -Uri $getGroupMembershipUri -Headers $authorization -Verbose:$false
+
+        if ($null -eq $isMemberOfGroup.Value -or $isMemberOfGroup.Value.Count -eq 0) {
+            Write-Warning "AzureAD user $($aRef) is already no longer a member of group $($pRef.Name) ($($pRef.id))"
+
+            $success = $true
+            $auditLogs.Add([PSCustomObject]@{
+                    Action  = "RevokePermission"
+                    Message = "Successfully revoked permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef) (already no longer a member)"
+                    IsError = $false
+                }
+            )
+        }
+        else {
+            if (-Not($dryRun -eq $true)) {
+                $baseGraphUri = "https://graph.microsoft.com/"
+                $removeGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($pRef.id)/members/$($aRef)" + '/$ref'
+
+                $response = Invoke-RestMethod -Method DELETE -Uri $removeGroupMembershipUri -Headers $authorization -Verbose:$false
+                Write-Information "Successfully revoked permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
+            }
+            else {
+                Write-Information $removeGroupMembershipUri
+                Write-Information $body
+            }
+
+            $success = $true
+            $auditLogs.Add([PSCustomObject]@{
+                    Action  = "RevokePermission"
+                    Message = "Successfully revoked permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef)"
+                    IsError = $false
+                }
+            )      
+        }
+    }    
 }
 catch {
     if ($_ -like "*Resource '$($pRef.id)' does not exist or one of its queried reference-property objects are not present*") {
@@ -118,7 +147,7 @@ catch {
         )
 
         # Log error for further analysis.  Contact Tools4ever Support to further troubleshoot
-        Write-Error "Error revoking Permission to Group $($pRef.Name) ($($pRef.id)). Error: $_"
+        Write-Error "Error revoking Permission to Group $($pRef.Name) ($($pRef.id)) for $($aRef). Error: $_"
     }
 }
 
