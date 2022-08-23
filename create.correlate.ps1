@@ -167,7 +167,7 @@ try {
         throw "No User found in Azure AD with userPrincipalName $($account.userPrincipalName)"
     }
 
-    $aRef = $azureUser.id
+    $aRef = $currentAccount.id
 
     $auditLogs.Add([PSCustomObject]@{
             Action  = "CreateAccount"
