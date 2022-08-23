@@ -1,14 +1,21 @@
+| :information_source: Information |
+|:---------------------------|
+| This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.       |
+
 <p align="center">
   <img src="https://user-images.githubusercontent.com/69046642/163960892-441e6361-cce2-477b-9bdb-b61452c2d077.png">
 </p>
 
-| :information_source: Information |
-|:---------------------------|
-| This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.       |
-<br />
+
+## Versioning
+| Version | Description | Date |
+| - | - | - |
+| 1.1.0   | Updated with new logging and added license management | 2022/07/12  |
+| 1.0.0   | Initial release | 2021/07/30  |
 
 <!-- TABLE OF CONTENTS -->
 ## Table of Contents
+- [Versioning](#versioning)
 - [Table of Contents](#table-of-contents)
 - [Introduction](#introduction)
 - [Getting the Azure AD graph API access](#getting-the-azure-ad-graph-api-access)
