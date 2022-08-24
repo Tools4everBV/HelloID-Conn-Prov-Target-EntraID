@@ -1,5 +1,3 @@
-$configuration = '{ "AADtenantID": "65fc161b-0c41-4cde-9908-dabf3cad26b6", "AADAppId": "83ac862d-fe99-4bdc-8d2e-87405fdb2379", "AADAppSecret": "b~R8Q~nTqO4~jA6NQuoaVWjNPRrv94ySoBtUda4A", "isDebug": false }'
-
 #####################################################
 # HelloID-Conn-Prov-Target-Azure-Permissions-permissions-Groups
 #
