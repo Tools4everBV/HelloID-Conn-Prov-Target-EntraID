@@ -31,9 +31,9 @@ $AADtenantID = $c.AADtenantID
 $AADAppId = $c.AADAppId
 $AADAppSecret = $c.AADAppSecret
 
-# Troubleshooting
-$aRef = "9f4b2474-3c8d-4f92-94bc-58fed6e2d09b"
-$dryRun = $false
+# # Troubleshooting
+# $aRef = "9f4b2474-3c8d-4f92-94bc-58fed6e2d09b"
+# $dryRun = $false
 
 #region functions
 function New-AuthorizationHeaders {
