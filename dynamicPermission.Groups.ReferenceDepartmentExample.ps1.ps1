@@ -1,14 +1,3 @@
-# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
-
-# Set debug logging
-switch ($($c.isDebug)) {
-    $true { $VerbosePreference = 'Continue' }
-    $false { $VerbosePreference = 'SilentlyContinue' }
-}
-$InformationPreference = "Continue"
-$WarningPreference = "Continue"
-
 #region Initialize default properties
 $config = ConvertFrom-Json $configuration
 $p = $person | ConvertFrom-Json
@@ -23,9 +12,19 @@ $success = $false
 $auditLogs = [Collections.Generic.List[PSCustomObject]]::new()
 $dynamicPermissions = [Collections.Generic.List[PSCustomObject]]::new()
 
-# AzureAD Application Parameters #
 $config = ConvertFrom-Json $configuration
+# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
+# Set debug logging
+switch ($($config.isDebug)) {
+    $true { $VerbosePreference = 'Continue' }
+    $false { $VerbosePreference = 'SilentlyContinue' }
+}
+$InformationPreference = "Continue"
+$WarningPreference = "Continue"
+
+# AzureAD Application Parameters #
 $AADtenantID = $config.AADtenantID
 $AADAppId = $config.AADAppId
 $AADAppSecret = $config.AADAppSecret
