@@ -155,14 +155,12 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                 $body = @{ "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($aRef)" } | ConvertTo-Json -Depth 10
                 
                 $response = Invoke-RestMethod -Method POST -Uri $addGroupMembershipUri -Body $body -Headers $authorization -Verbose:$false
-            
-                Write-Information "Successfully granted Permission for Group [$($permission.Name) ($($permission.Value))] for [$($aRef)]"
 
                 $success = $true
                 $auditLogs.Add(
                     [PSCustomObject]@{
                         Action  = "GrantDynamicPermission"
-                        Message = "Successfully granted permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
+                        Message = "Successfully granted permission to Group $($permission.Name) ($($permission.Value)) for $($aRef)"
                         IsError = $false
                     }
                 )
@@ -175,7 +173,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                     $auditLogs.Add(
                         [PSCustomObject]@{
                             Action  = "GrantDynamicPermission"
-                            Message = "Successfully granted permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
+                            Message = "Successfully granted permission to Group $($permission.Name) ($($permission.Value)) for $($aRef)"
                             IsError = $false
                         }
                     )                    
@@ -185,7 +183,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                     $auditLogs.Add(
                         [PSCustomObject]@{
                             Action  = "GrantDynamicPermission"
-                            Message = "Failed to grant permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
+                            Message = "Failed to grant permission to Group $($permission.Name) ($($permission.Value)) for $($aRef)"
                             IsError = $true
                         }
                     )
@@ -231,13 +229,11 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
 
                     $response = Invoke-RestMethod -Method DELETE -Uri $removeGroupMembershipUri -Headers $authorization -Verbose:$false
 
-                    Write-Information "Successfully revoked permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
-
                     $success = $true
                     $auditLogs.Add(
                         [PSCustomObject]@{
                             Action  = "RevokeDynamicPermission"
-                            Message = "Successfully revoked permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
+                            Message = "Successfully revoked permission to Group $($permission.Name) ($($permission.Value)) for $($aRef)"
                             IsError = $false
                         }
                     )
@@ -250,7 +246,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                         $auditLogs.Add(
                             [PSCustomObject]@{
                                 Action  = "RevokeDynamicPermission"
-                                Message = "Successfully revoked permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
+                                Message = "Successfully revoked permission to Group $($permission.Name) ($($permission.Value)) for $($aRef)"
                                 IsError = $false
                             }
                         )                    
@@ -260,7 +256,7 @@ foreach ($permission in $desiredPermissions.GetEnumerator()) {
                         $auditLogs.Add(
                             [PSCustomObject]@{
                                 Action  = "RevokeDynamicPermission"
-                                Message = "Failed to revoke permission to Group $($permission.Name) ($($permission.id)) for $($aRef)"
+                                Message = "Failed to revoke permission to Group $($permission.Name) ($($permission.Value)) for $($aRef)"
                                 IsError = $true
                             }
                         )
