@@ -74,6 +74,8 @@ function New-AuthorizationHeaders {
         $headers.Add('Authorization', "Bearer $accesstoken")
         $headers.Add('Accept', 'application/json')
         $headers.Add('Content-Type', 'application/json')
+        # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
+        $headers.Add('ConsistencyLevel', 'eventual')
 
         Write-Output $headers  
     }
@@ -145,7 +147,6 @@ function Resolve-MicrosoftGraphAPIErrorMessage {
         Write-Output $errorMessage
     }
 }
-
 #endregion functions
 
 try{

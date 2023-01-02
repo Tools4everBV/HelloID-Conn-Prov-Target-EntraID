@@ -1,212 +1,346 @@
-# The resourceData used in this default script uses resources based on Title
+#####################################################
+# HelloID-Conn-Prov-Target-ActiveDirectory-DynamicPermissions-Groups
+#
+# Version: 1.2.1
+#####################################################
+#region Initialize default properties
+$c = $configuration | ConvertFrom-Json
 $rRef = $resourceContext | ConvertFrom-Json
-$success = $true
+$success = $false # Set to false at start, at the end, only when no error occurs it is set to true
+$auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-$auditLogs = [Collections.Generic.List[PSCustomObject]]::new()
+# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
-# AzureAD Application Parameters #
-$config = ConvertFrom-Json $configuration
+# Set debug logging
+switch ($($c.isDebug)) {
+    $true { $VerbosePreference = 'Continue' }
+    $false { $VerbosePreference = 'SilentlyContinue' }
+}
+$InformationPreference = "Continue"
+$WarningPreference = "Continue"
 
-$AADtenantID = $config.AADtenantID
-$AADAppId = $config.AADAppId
-$AADAppSecret = $config.AADAppSecret
+# Used to connect to Azure AD Graph API
+$AADtenantID = $c.AADtenantID
+$AADAppId = $c.AADAppId
+$AADAppSecret = $c.AADAppSecret
 
+# Troubleshooting
 # $dryRun = $false
-$debug = $false
 
-$groupType = "Microsoft 365 group" # "Microsoft 365 group" or "Security group"
-
-# Name format: Department-<department code>
-$azureAdGroupNamePrefix = "Department-"
-$azureAdGroupNameSuffix = ""
-$azureAdGroupDescriptionPrefix = "$groupType voor afdeling "
-$azureAdGroupDescriptionSuffix = ""
-
-#region Supporting Functions
-function Get-ADSanitizeGroupName
-{
+#region functions
+function Get-ADSanitizeGroupName {
     param(
         [parameter(Mandatory = $true)][String]$Name
     )
-    $newName = $name.trim();
+    $newName = $name.trim()
     # $newName = $newName -replace ' - ','_'
-    $newName = $newName -replace '[`,~,!,#,$,%,^,&,*,(,),+,=,<,>,?,/,'',",;,:,\,|,},{,.]',''
-    $newName = $newName -replace '\[','';
-    $newName = $newName -replace ']','';
-    # $newName = $newName -replace ' ','_';
-    $newName = $newName -replace '\.\.\.\.\.','.';
-    $newName = $newName -replace '\.\.\.\.','.';
-    $newName = $newName -replace '\.\.\.','.';
-    $newName = $newName -replace '\.\.','.';
-    return $newName;
+    $newName = $newName -replace '[`,~,!,#,$,%,^,&,*,(,),+,=,<,>,?,/,'',",,:,\,|,},{,.]', ''
+    $newName = $newName -replace '\[', ''
+    $newName = $newName -replace ']', ''
+    # $newName = $newName -replace ' ','_'
+    $newName = $newName -replace '\.\.\.\.\.', '.'
+    $newName = $newName -replace '\.\.\.\.', '.'
+    $newName = $newName -replace '\.\.\.', '.'
+    $newName = $newName -replace '\.\.', '.'
+    return $newName
 }
 
-function Remove-StringLatinCharacters
-{
+function Remove-StringLatinCharacters {
     PARAM ([string]$String)
     [Text.Encoding]::ASCII.GetString([Text.Encoding]::GetEncoding("Cyrillic").GetBytes($String))
 }
-#endregion Supporting Functions
 
-# In preview only the first 10 items of the SourceData are used
-foreach ($resource in $rRef.SourceData) {
-    # Write-Information "Checking $($resource)"
+function New-AuthorizationHeaders {
+    [CmdletBinding()]
+    [OutputType([System.Collections.Generic.Dictionary[[String], [String]]])]
+    param(
+        [parameter(Mandatory)]
+        [string]
+        $TenantId,
+
+        [parameter(Mandatory)]
+        [string]
+        $ClientId,
+
+        [parameter(Mandatory)]
+        [string]
+        $ClientSecret
+    )
     try {
-        # The names of security principal objects can contain all Unicode characters except the special LDAP characters defined in RFC 2253.
-        # This list of special characters includes: a leading space; a trailing space; and any of the following characters: # , + " \ < > ;
-        # A group account cannot consist solely of numbers, periods (.), or spaces. Any leading periods or spaces are cropped.
-        # https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc776019(v=ws.10)?redirectedfrom=MSDN
-        # https://www.ietf.org/rfc/rfc2253.txt
-        $azureADGroupName = ("$azureADGroupNamePrefix" + "$($resource.ExternalId)" + "$azureADGroupNameSuffix")
-        $azureADGroupName = Get-ADSanitizeGroupName -Name $azureADGroupName
-
-        $azureADGroupDescription = ("$azureADGroupDescriptionPrefix" + "$($resource.name)" + "$azureADGroupDescriptionSuffix")
-        
-        $azureADGroupParams = @{
-            displayName     = $azureADGroupName
-            mailNickname    = $azureADGroupName
-            groupType       = $groupType # "Microsoft 365 group" or "Security group"
-            visibility      = "Public"
-            description     = $azureADGroupDescription
-        }
-
+        Write-Verbose "Creating Access Token"
         $baseUri = "https://login.microsoftonline.com/"
-        $authUri = $baseUri + "$AADTenantID/oauth2/token"
-
+        $authUri = $baseUri + "$TenantId/oauth2/token"
+    
         $body = @{
-            grant_type      = "client_credentials"
-            client_id       = "$AADAppId"
-            client_secret   = "$AADAppSecret"
-            resource        = "https://graph.microsoft.com"
+            grant_type    = "client_credentials"
+            client_id     = "$ClientId"
+            client_secret = "$ClientSecret"
+            resource      = "https://graph.microsoft.com"
         }
     
         $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
-        $accessToken = $Response.access_token;
-
+        $accessToken = $Response.access_token
+    
         #Add the authorization header to the request
-        $authorization = @{
-            Authorization = "Bearer $accesstoken";
-            'Content-Type' = "application/json";
-            Accept = "application/json";
+        Write-Verbose 'Adding Authorization headers'
+
+        $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
+        $headers.Add('Authorization', "Bearer $accesstoken")
+        $headers.Add('Accept', 'application/json')
+        $headers.Add('Content-Type', 'application/json')
+
+        Write-Output $headers  
+    }
+    catch {
+        $PSCmdlet.ThrowTerminatingError($_)
+    }
+}
+
+function Resolve-HTTPError {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory,
+            ValueFromPipeline
+        )]
+        [object]$ErrorObject
+    )
+    process {
+        $httpErrorObj = [PSCustomObject]@{
+            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
+            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
+            RequestUri            = $ErrorObject.TargetObject.RequestUri
+            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
+            ErrorMessage          = ''
         }
-
-        $baseSearchUri = "https://graph.microsoft.com/"
-        $searchUri = $baseSearchUri + 'v1.0/groups?$filter=displayName+eq+' + "'$($azureADGroupParams.displayName)'"
-
-        $azureADGroupResponse = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false
-        $azureADGroup = $azureADGroupResponse.value    
-
-        if ($azureADGroup.Id.count -ge 1) {
-            $groupExists = $true
-        }else{
-            $groupExists = $false
+        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
+            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
         }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+            $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+        }
+        Write-Output $httpErrorObj
+    }
+}
 
-        # If resource does not exist
-        if ($groupExists -eq $False) {
-            <# Resource creation preview uses a timeout of 30 seconds
-            while actual run has timeout of 10 minutes #>
-            Write-Information "Creating $($azureADGroupParams.displayName)"
+function Resolve-MicrosoftGraphAPIErrorMessage {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory,
+            ValueFromPipeline
+        )]
+        [object]$ErrorObject
+    )
+    process {
+        try {
+            $errorObjectConverted = $ErrorObject | ConvertFrom-Json -ErrorAction Stop
 
-            if (-Not($dryRun -eq $True)) {
-                $baseUri = "https://login.microsoftonline.com/"
-                $authUri = $baseUri + "$AADTenantID/oauth2/token"
-
-                $body = @{
-                    grant_type      = "client_credentials"
-                    client_id       = "$AADAppId"
-                    client_secret   = "$AADAppSecret"
-                    resource        = "https://graph.microsoft.com"
+            if ($null -ne $errorObjectConverted.error_description) {
+                $errorMessage = $errorObjectConverted.error_description
+            }
+            elseif ($null -ne $errorObjectConverted.error) {
+                if ($null -ne $errorObjectConverted.error.message) {
+                    $errorMessage = $errorObjectConverted.error.message
+                    if ($null -ne $errorObjectConverted.error.code) { 
+                        $errorMessage = $errorMessage + " Error code: $($errorObjectConverted.error.code)"
+                    }
                 }
+                else {
+                    $errorMessage = $errorObjectConverted.error
+                }
+            }
+            else {
+                $errorMessage = $ErrorObject
+            }
+        }
+        catch {
+            $errorMessage = $ErrorObject
+        }
+
+        Write-Output $errorMessage
+    }
+}
+#endregion functions
+
+#region Execute
+# In preview only the first 10 items of the SourceData are used
+try {
+    foreach ($resource in $rRef.SourceData) {
+        Write-Verbose "Checking $($resource)"
+        try {
+            #region Change mapping here
+            # The names of security principal objects can contain all Unicode characters except the special LDAP characters defined in RFC 2253.
+            # This list of special characters includes: a leading space a trailing space and any of the following characters: # , + " \ < > 
+            # A group account cannot consist solely of numbers, periods (.), or spaces. Any leading periods or spaces are cropped.
+            # https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc776019(v=ws.10)?redirectedfrom=MSDN
+            # https://www.ietf.org/rfc/rfc2253.txt
+
+            $groupType = "Microsoft 365 group"  # "Microsoft 365 group" or "Security group"
+            $groupVisibility = "Public"
+
+            # # Example: department_<departmentname> (department differs from other objects as the property for the name is "DisplayName", not "Name")
+            $groupName = "department_" + "$($resource.DisplayName)"
+            # Sanitize group name, e.g. replace ' - ' with '_' or other sanitization actions 
+            $groupName = Get-ADSanitizeGroupName -Name $groupName
+
+            $groupDescription = "Group for department " + "$($resource.DisplayName)"
+
+            # Example: title_<titlename>
+            # $groupName = "title_" + "$($resource.Name)"
+            # Sanitize group name, e.g. replace ' - ' with '_' or other sanitization actions 
+            # $groupName = Get-ADSanitizeGroupName -Name $groupName
+
+            # $groupDescription = "Group for title " + "$($resource.Name)"
+
+            # Example: customfield_ <customfield> (custom fields consists of only one attribute, no object with multiple attributes present!)
+            # $groupName = "customfield_" + "$($resource)"
+            # Sanitize group name, e.g. replace ' - ' with '_' or other sanitization actions 
+            # $groupName = Get-ADSanitizeGroupName -Name $groupName
+
+            # $groupDescription = "Group for custom field " + "$($resource)"
+            #endregion Change mapping here
+
+            $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
             
-                $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
-                $accessToken = $Response.access_token;
+            Write-Verbose "Querying Azure AD group with displayname '$($groupName)'"
 
-                #Add the authorization header to the request
-                $authorization = @{
-                    Authorization = "Bearer $accesstoken";
-                    'Content-Type' = "application/json";
-                    Accept = "application/json";
-                }
+            $baseUri = "https://graph.microsoft.com/"
+            $splatWebRequest = @{
+                Uri     = [uri]::EscapeUriString("$baseUri/v1.0/groups?`$filter=displayName+eq+'$($groupName)'")
+                Headers = $headers
+                Method  = 'GET'
+            }
+            $currentGroup = $null
+            $currentGroupResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
+            $currentGroup = $currentGroupResponse.Value
 
-                $baseCreateUri = "https://graph.microsoft.com/"
-                $createUri = $baseCreateUri + "v1.0/groups"
+            if ($null -eq $currentGroup.Id) {
+                $groupExists = $false
+            }
+            else {
+                $groupExists = $true
+            }
 
-                Switch($azureADGroupParams.groupType){
+            # If resource does not exist
+            if ($groupExists -eq $False) {
+                <# Resource creation preview uses a timeout of 30 seconds
+                while actual run has timeout of 10 minutes #>
+                Switch ($groupType) {
                     'Microsoft 365 group' {
                         $group = [PSCustomObject]@{
-                            description = $azureADGroupParams.description;
-                            displayName = $azureADGroupParams.displayName;
+                            displayName     = $groupName
+                            description     = $groupDescription
+                            mailNickname    = $groupName.Replace(" ", "")
+                            visibility      = $groupVisibility
 
-                            groupTypes = @("Unified");
+                            groupTypes      = @("Unified") # Needs to be set to with 'Unified' to create Microsoft 365 group
+                            mailEnabled     = $true # Needs to be enabled to create Microsoft 365 group
+                            securityEnabled = $false # Needs to be disabled to create Microsoft 365 group
 
-                            mailEnabled = $true;
-                            mailNickname = $azureADGroupParams.mailNickname.Replace(" ","");
-                            # allowExternalSenders = $allowExternalSenders; - Not supported with Application permissions
-                            # autoSubscribeNewMembers = $autoSubscribeNewMembers; - Not supported with Application permissions
-
-                            securityEnabled = $false;
-
-                            visibility = $azureADGroupParams.visibility;
+                            # allowExternalSenders = $allowExternalSenders - Not supported with Application permissions
+                            # autoSubscribeNewMembers = $autoSubscribeNewMembers - Not supported with Application permissions
                         }
                     }
 
                     'Security group' {
                         $group = [PSCustomObject]@{
-                            description = $azureADGroupParams.description;
-                            displayName = $azureADGroupParams.displayName;
+                            displayName     = $groupName
+                            description     = $groupDescription
+                            mailNickname    = $groupName.Replace(" ", "")
+                            visibility      = $groupVisibility
 
-                            #groupTypes = @(""); - Needs to be empty to create Security group
+                            #groupTypes = @("") # Needs to be empty to create Security group
+                            mailEnabled     = $false # Needs to be disabled to create Security group
+                            securityEnabled = $true # Needs to be enabled to create Security group
 
-                            mailEnabled = $false;
-                            mailNickname = $azureADGroupParams.mailNickname.Replace(" ","");
-                            # allowExternalSenders = $allowExternalSenders; - Not supported with Application permissions
-                            # autoSubscribeNewMembers = $autoSubscribeNewMembers; - Not supported with Application permissions
-
-                            securityEnabled = $true;
-
-                            visibility = $azureADGroupParams.visibility;
+                            # allowExternalSenders = $allowExternalSenders - Not supported with Application permissions
+                            # autoSubscribeNewMembers = $autoSubscribeNewMembers - Not supported with Application permissions                            
                         }
                     }
                 }
-                $body = $group | ConvertTo-Json -Depth 10
-            
-                $response = Invoke-RestMethod -Uri $createUri -Method POST -Headers $authorization -Body $body -Verbose:$false
-                $success = $True
-                $auditLogs.Add([PSCustomObject]@{
-                        Message = "Created resource for $($resource.displayName) - $($response.displayName) ($($response.Id))"
-                        Action  = "CreateResource"
-                        IsError = $false
-                    })
+
+                if (-Not($dryRun -eq $True)) {
+                    $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
+
+                    $body = $group | ConvertTo-Json -Depth 10
+                    $baseUri = "https://graph.microsoft.com/"
+                    $splatWebRequest = @{
+                        Uri     = "$baseUri/v1.0/groups"
+                        Headers = $headers
+                        Method  = 'POST'
+                        Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
+                    }
+                    $newGroup = $null
+                    $newGroup = Invoke-RestMethod @splatWebRequest -Verbose:$false
+
+                    $auditLogs.Add([PSCustomObject]@{
+                            Message = "Created group: $($newGroup.displayName) ($($newGroup.Id))"
+                            Action  = "CreateResource"
+                            IsError = $false
+                        })
+                }
+                else {
+                    Write-Warning "DryRun: would create group $($groupName): $($group | ConvertTo-Json)"
+                }
+            }
+            else {
+                if ($dryRun -eq $True) {
+                    Write-Warning "Group $($groupName) already exists"
+                }
+
+                # $auditLogs.Add([PSCustomObject]@{
+                #     Message = "Skipped creation of group: $($newGroup.displayName) ($($newGroup.Id))"
+                #     Action  = "CreateResource"
+                #     IsError = $false
+                # })
             }
         }
-        else {
-            if ($debug -eq $true) { Write-Warning "Group $($azureADGroupParams.displayName) already exists" }
-            $success = $True
-            # $auditLogs.Add([PSCustomObject]@{
-            #     Message = "Skipped resource for $($resource.displayName) - $($azureADGroupParams.displayName)"
-            #     Action  = "CreateResource"
-            #     IsError = $false
-            # })
+        catch {
+            # Clean up error variables
+            $verboseErrorMessage = $null
+            $auditErrorMessage = $null
+
+            $ex = $PSItem
+            if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+                $errorObject = Resolve-HTTPError -Error $ex
+
+                $verboseErrorMessage = $errorObject.ErrorMessage
+
+                $auditErrorMessage = Resolve-MicrosoftGraphAPIErrorMessage -ErrorObject $errorObject.ErrorMessage
+            }
+
+            # If error message empty, fall back on $ex.Exception.Message
+            if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+                $verboseErrorMessage = $ex.Exception.Message
+            }
+            if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+                $auditErrorMessage = $ex.Exception.Message
+            }
+
+            Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
+
+            Write-Warning "Failed to create group $($groupName): $($group | ConvertTo-Json). Error Message: $auditErrorMessage"
+
+            $auditLogs.Add([PSCustomObject]@{
+                    Message = "Failed to create group $($groupName). Error Message: $auditErrorMessage"
+                    Action  = "CreateResource"
+                    IsError = $true
+                })
         }
-        
-    }
-    catch {
-        Write-Warning "Failed to Create $($distinguishedName). Error: $_"
-
-        # $success = $false
-        $auditLogs.Add([PSCustomObject]@{
-                Message = "Failed to create resource for $($resource.name) - $distinguishedName. Error: $_"
-                Action  = "CreateResource"
-                IsError = $true
-            })
     }
 }
+#endregion Execute
+finally {
+    # Check if auditLogs contains errors, if no errors are found, set success to true
+    if (-NOT($auditLogs.IsError -contains $true)) {
+        $success = $true
+    }
 
-# Send results
-$result = [PSCustomObject]@{
-    Success   = $success
-    AuditLogs = $auditLogs
+    #region Build up result
+    $result = [PSCustomObject]@{
+        Success   = $success
+        AuditLogs = $auditLogs
+    }
+    Write-Output ($result | ConvertTo-Json -Depth 10)
+    #endregion Build up result
 }
-
-Write-Output $result | ConvertTo-Json -Depth 10
