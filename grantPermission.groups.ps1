@@ -33,7 +33,7 @@ $AADAppSecret = $c.AADAppSecret
 
 # # Troubleshooting
 # $aRef = "9f4b2474-3c8d-4f92-94bc-58fed6e2d09b"
-$dryRun = $false
+# $dryRun = $false
 
 #region functions
 function New-AuthorizationHeaders {
@@ -126,6 +126,9 @@ function Resolve-MicrosoftGraphAPIErrorMessage {
             elseif ($null -ne $errorObjectConverted.error) {
                 if ($null -ne $errorObjectConverted.error.message) {
                     $errorMessage = $errorObjectConverted.error.message
+                    if ($null -ne $errorObjectConverted.error.code) { 
+                        $errorMessage = $errorMessage + " Error code: $($errorObjectConverted.error.code)"
+                    }
                 }
                 else {
                     $errorMessage = $errorObjectConverted.error

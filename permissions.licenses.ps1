@@ -113,6 +113,9 @@ function Resolve-MicrosoftGraphAPIErrorMessage {
             elseif ($null -ne $errorObjectConverted.error) {
                 if ($null -ne $errorObjectConverted.error.message) {
                     $errorMessage = $errorObjectConverted.error.message
+                    if ($null -ne $errorObjectConverted.error.code) { 
+                        $errorMessage = $errorMessage + " Error code: $($errorObjectConverted.error.code)"
+                    }
                 }
                 else {
                     $errorMessage = $errorObjectConverted.error
