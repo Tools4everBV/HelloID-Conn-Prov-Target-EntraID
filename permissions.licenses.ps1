@@ -1,23 +1,21 @@
 #####################################################
 # HelloID-Conn-Prov-Target-Azure-Permissions-permissions-Licenses
 #
-# Version: 1.1.0
+# Version: 1.1.1
 #####################################################
 # Initialize default values
 $c = $configuration | ConvertFrom-Json
 
-$VerbosePreference = "SilentlyContinue"
-$InformationPreference = "Continue"
-$WarningPreference = "Continue"
-
-# Enable TLS1.2
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
 # Set debug logging
 switch ($($c.isDebug)) {
     $true { $VerbosePreference = 'Continue' }
     $false { $VerbosePreference = 'SilentlyContinue' }
 }
+$InformationPreference = "Continue"
+$WarningPreference = "Continue"
 
 # Used to connect to Azure AD Graph API
 $AADtenantID = $c.AADtenantID
@@ -133,70 +131,73 @@ function Resolve-MicrosoftGraphAPIErrorMessage {
 }
 #endregion functions
 
+# Get the list of commercial subscriptions that an organization has acquired (https://docs.microsoft.com/en-us/graph/api/subscribedsku-list?view=graph-rest-1.0&tabs=http)
 try {
-    $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
+    try {
+        $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
 
-    [System.Collections.ArrayList]$permissions = @()
+        [System.Collections.ArrayList]$permissions = @()
 
-    # Get the list of commercial subscriptions that an organization has acquired (https://docs.microsoft.com/en-us/graph/api/subscribedsku-list?view=graph-rest-1.0&tabs=http)
-    Write-Verbose "Querying Microsoft 365 licenses"
+        Write-Verbose "Querying Microsoft 365 licenses"
 
-    $baseUri = "https://graph.microsoft.com/"
-    $splatWebRequest = @{
-        Uri     = "$baseUri/v1.0/subscribedSkus"
-        Headers = $headers
-        Method  = 'GET'
-    }
-    $getLicensesResponse = $null
-    $getLicensesResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
-    foreach ($license in $getLicensesResponse.value) { $null = $permissions.Add($license) }
-    
-    while (![string]::IsNullOrEmpty($getLicensesResponse.'@odata.nextLink')) {
         $baseUri = "https://graph.microsoft.com/"
         $splatWebRequest = @{
-            Uri     = $getLicensesResponse.'@odata.nextLink'
+            Uri     = "$baseUri/v1.0/subscribedSkus"
             Headers = $headers
             Method  = 'GET'
         }
         $getLicensesResponse = $null
         $getLicensesResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
         foreach ($license in $getLicensesResponse.value) { $null = $permissions.Add($license) }
-    }
-
-    Write-Information "Successfully queried Microsoft 365 licenses. Result count: $($permissions.Count)"
-}
-catch {
-    $ex = $PSItem
-    if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-        $errorObject = Resolve-HTTPError -Error $ex
-
-        $verboseErrorMessage = $errorObject.ErrorMessage
-
-        $auditErrorMessage = Resolve-MicrosoftGraphAPIErrorMessage -ErrorObject $errorObject.ErrorMessage
-    }
-
-    # If error message empty, fall back on $ex.Exception.Message
-    if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
-        $verboseErrorMessage = $ex.Exception.Message
-    }
-    if ([String]::IsNullOrEmpty($auditErrorMessage)) {
-        $auditErrorMessage = $ex.Exception.Message
-    }
-
-    Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
-
-    throw "Error querying Microsoft 365 licenses. Error Message: $auditErrorMessage"
-}
-
-
-$permissions | ForEach-Object {
-    $permission = @{
-        displayName    = "License - $($_.skuPartNumber) ($($_.skuId))"
-        identification = @{
-            id            = $_.id
-            skuId         = $_.skuId
-            skuPartNumber = $_.skuPartNumber
+    
+        while (![string]::IsNullOrEmpty($getLicensesResponse.'@odata.nextLink')) {
+            $baseUri = "https://graph.microsoft.com/"
+            $splatWebRequest = @{
+                Uri     = $getLicensesResponse.'@odata.nextLink'
+                Headers = $headers
+                Method  = 'GET'
+            }
+            $getLicensesResponse = $null
+            $getLicensesResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
+            foreach ($license in $getLicensesResponse.value) { $null = $permissions.Add($license) }
         }
+
+        Write-Information "Successfully queried Microsoft 365 licenses. Result count: $($permissions.Count)"
     }
-    Write-output $permission | ConvertTo-Json -Depth 10
+    catch {
+        $ex = $PSItem
+        if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+            $errorObject = Resolve-HTTPError -Error $ex
+
+            $verboseErrorMessage = $errorObject.ErrorMessage
+
+            $auditErrorMessage = Resolve-MicrosoftGraphAPIErrorMessage -ErrorObject $errorObject.ErrorMessage
+        }
+
+        # If error message empty, fall back on $ex.Exception.Message
+        if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+            $verboseErrorMessage = $ex.Exception.Message
+        }
+        if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+            $auditErrorMessage = $ex.Exception.Message
+        }
+
+        Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
+
+        throw "Error querying Microsoft 365 licenses. Error Message: $auditErrorMessage"
+    }
+}
+finally {
+    # Send results
+    $permissions | ForEach-Object {
+        $permission = @{
+            displayName    = "License - $($_.skuPartNumber) ($($_.skuId))"
+            identification = @{
+                id            = $_.id
+                skuId         = $_.skuId
+                skuPartNumber = $_.skuPartNumber
+            }
+        }
+        Write-output $permission | ConvertTo-Json -Depth 10
+    }
 }
