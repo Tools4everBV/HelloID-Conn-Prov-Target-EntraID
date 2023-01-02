@@ -454,87 +454,87 @@ try {
     }
 
     # Update current permissions
-    # Warning! This example will grant all permissions again!
-    if ($o -eq "update") {
-        # Grant all desired permissions, ignoring current permissions
-        foreach ($permission in $desiredPermissions.GetEnumerator()) {
-            $subPermissions.Add([PSCustomObject]@{
-                    DisplayName = $permission.Value
-                    Reference   = [PSCustomObject]@{ Id = $permission.Name }
-                })
+    # # Warning! This example will grant all permissions again! Only uncomment this when this is needed (e.g. force update)
+    # if ($o -eq "update") {
+    #     # Grant all desired permissions, ignoring current permissions
+    #     foreach ($permission in $desiredPermissions.GetEnumerator()) {
+    #         $subPermissions.Add([PSCustomObject]@{
+    #                 DisplayName = $permission.Value
+    #                 Reference   = [PSCustomObject]@{ Id = $permission.Name }
+    #             })
 
-            # Grant AzureAD Groupmembership
-            try {
-                Write-Verbose "Granting permission to Group '$($permission.Value) ($($permission.Name))' for account '$($aRef)'"
+    #         # Grant AzureAD Groupmembership
+    #         try {
+    #             Write-Verbose "Granting permission to Group '$($permission.Value) ($($permission.Name))' for account '$($aRef)'"
         
-                $bodyAddPermission = [PSCustomObject]@{
-                    "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($aRef)"
-                }
-                $body = ($bodyAddPermission | ConvertTo-Json -Depth 10)
+    #             $bodyAddPermission = [PSCustomObject]@{
+    #                 "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($aRef)"
+    #             }
+    #             $body = ($bodyAddPermission | ConvertTo-Json -Depth 10)
         
-                $splatWebRequest = @{
-                    Uri     = "$baseUri/v1.0/groups/$($permission.Name)/members/`$ref"
-                    Headers = $headers
-                    Method  = 'POST'
-                    Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
-                }
+    #             $splatWebRequest = @{
+    #                 Uri     = "$baseUri/v1.0/groups/$($permission.Name)/members/`$ref"
+    #                 Headers = $headers
+    #                 Method  = 'POST'
+    #                 Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
+    #             }
                     
-                if (-not($dryRun -eq $true)) {
-                    $addPermission = Invoke-RestMethod @splatWebRequest -Verbose:$false
-                    $auditLogs.Add([PSCustomObject]@{
-                            Action  = "UpdatePermission"
-                            Message = "Successfully granted permission to Group '$($permission.Value) ($($permission.Name))' for account '$($aRef)'"
-                            IsError = $false
-                        })
-                }
-                else {
-                    Write-Warning "DryRun: Would grant permission to Group '$($permission.Value) ($($permission.Name))' for account '$($aRef)'"
-                }
-            }
-            catch {
-                # Clean up error variables
-                $verboseErrorMessage = $null
-                $auditErrorMessage = $null
+    #             if (-not($dryRun -eq $true)) {
+    #                 $addPermission = Invoke-RestMethod @splatWebRequest -Verbose:$false
+    #                 $auditLogs.Add([PSCustomObject]@{
+    #                         Action  = "UpdatePermission"
+    #                         Message = "Successfully granted permission to Group '$($permission.Value) ($($permission.Name))' for account '$($aRef)'"
+    #                         IsError = $false
+    #                     })
+    #             }
+    #             else {
+    #                 Write-Warning "DryRun: Would grant permission to Group '$($permission.Value) ($($permission.Name))' for account '$($aRef)'"
+    #             }
+    #         }
+    #         catch {
+    #             # Clean up error variables
+    #             $verboseErrorMessage = $null
+    #             $auditErrorMessage = $null
         
-                $ex = $PSItem
-                if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-                    $errorObject = Resolve-HTTPError -Error $ex
+    #             $ex = $PSItem
+    #             if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+    #                 $errorObject = Resolve-HTTPError -Error $ex
                 
-                    $verboseErrorMessage = $errorObject.ErrorMessage
+    #                 $verboseErrorMessage = $errorObject.ErrorMessage
                 
-                    $auditErrorMessage = Resolve-MicrosoftGraphAPIErrorMessage -ErrorObject $errorObject.ErrorMessage
-                }
+    #                 $auditErrorMessage = Resolve-MicrosoftGraphAPIErrorMessage -ErrorObject $errorObject.ErrorMessage
+    #             }
                 
-                # If error message empty, fall back on $ex.Exception.Message
-                if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
-                    $verboseErrorMessage = $ex.Exception.Message
-                }
-                if ([String]::IsNullOrEmpty($auditErrorMessage)) {
-                    $auditErrorMessage = $ex.Exception.Message
-                }
+    #             # If error message empty, fall back on $ex.Exception.Message
+    #             if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+    #                 $verboseErrorMessage = $ex.Exception.Message
+    #             }
+    #             if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+    #                 $auditErrorMessage = $ex.Exception.Message
+    #             }
                 
-                Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
+    #             Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
                     
-                # Since the error message for adding a user that is already member is a 400 (bad request), we cannot check on a code or type
-                # this may result in an incorrect check when the error messages are in any other language than english, please change this accordingly
-                if ($auditErrorMessage -like "*One or more added object references already exist for the following modified properties*") {
-                    $auditLogs.Add([PSCustomObject]@{
-                            Action  = "UpdatePermission"
-                            Message = "User '$($aRef)' is already a member of the group '$($permission.Value)'. Skipped grant of permission to group '$($permission.Value) ($($permission.Name))' for user '$($aRef)'"
-                            IsError = $false
-                        }
-                    )
-                }
-                else {
-                    $auditLogs.Add([PSCustomObject]@{
-                            Action  = "UpdatePermission"
-                            Message = "Error granting permission to Group '$($permission.Value) ($($permission.Name))' for account '$($aRef)'. Error Message: $auditErrorMessage"
-                            IsError = $True
-                        })
-                }
-            }
-        }    
-    }
+    #             # Since the error message for adding a user that is already member is a 400 (bad request), we cannot check on a code or type
+    #             # this may result in an incorrect check when the error messages are in any other language than english, please change this accordingly
+    #             if ($auditErrorMessage -like "*One or more added object references already exist for the following modified properties*") {
+    #                 $auditLogs.Add([PSCustomObject]@{
+    #                         Action  = "UpdatePermission"
+    #                         Message = "User '$($aRef)' is already a member of the group '$($permission.Value)'. Skipped grant of permission to group '$($permission.Value) ($($permission.Name))' for user '$($aRef)'"
+    #                         IsError = $false
+    #                     }
+    #                 )
+    #             }
+    #             else {
+    #                 $auditLogs.Add([PSCustomObject]@{
+    #                         Action  = "UpdatePermission"
+    #                         Message = "Error granting permission to Group '$($permission.Value) ($($permission.Name))' for account '$($aRef)'. Error Message: $auditErrorMessage"
+    #                         IsError = $True
+    #                     })
+    #             }
+    #         }
+    #     }    
+    # }
     
     # Handle case of empty defined dynamic permissions.  Without this the entitlement will error.
     if ($o -match "update|grant" -AND $subPermissions.count -eq 0) {
