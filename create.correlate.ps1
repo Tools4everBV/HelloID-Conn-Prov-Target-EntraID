@@ -1,27 +1,24 @@
 #####################################################
 # HelloID-Conn-Prov-Target-Azure-Permissions-Create-Correlate
 #
-# Version: 1.1.0
+# Version: 1.1.1
 #####################################################
 # Initialize default values
 $c = $configuration | ConvertFrom-Json
 $p = $person | ConvertFrom-Json
-
-$success = $true # Set to true at start, because only when an error occurs it is set to false
+$success = $false # Set to false at start, at the end, only when no error occurs it is set to true
 $auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-$VerbosePreference = "SilentlyContinue"
-$InformationPreference = "Continue"
-$WarningPreference = "Continue"
-
-# Enable TLS1.2
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
 # Set debug logging
 switch ($($c.isDebug)) {
     $true { $VerbosePreference = 'Continue' }
     $false { $VerbosePreference = 'SilentlyContinue' }
 }
+$InformationPreference = "Continue"
+$WarningPreference = "Continue"
 
 # Used to connect to Azure AD Graph API
 $AADtenantID = $c.AADtenantID
@@ -29,10 +26,10 @@ $AADAppId = $c.AADAppId
 $AADAppSecret = $c.AADAppSecret
 
 #region Change mapping here
-# Change mapping here
 $account = [PSCustomObject]@{
-    userPrincipalName = $p.Accounts.MicrosoftActiveDirectory.userPrincipalName
+    userPrincipalName = $p.Accounts.MicrosoftAzureAD.userPrincipalName + '1'
 }
+#endregion Change mapping here
 
 # # Troubleshooting
 # $account = [PSCustomObject]@{
@@ -149,65 +146,80 @@ function Resolve-MicrosoftGraphAPIErrorMessage {
 }
 #endregion functions
 
-# Get current Azure AD account
 try {
-    $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
+    # Get current Azure AD account
+    try {
+        $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
 
-    Write-Verbose "Querying Azure AD account with userPrincipalName $($account.userPrincipalName)"
-    $baseUri = "https://graph.microsoft.com/"
-    $splatWebRequest = @{
-        Uri     = "$baseUri/v1.0/users/$($account.userPrincipalName)"
-        Headers = $headers
-        Method  = 'GET'
+        Write-Verbose "Querying Azure AD account with userPrincipalName $($account.userPrincipalName)"
+        $baseUri = "https://graph.microsoft.com/"
+        $splatWebRequest = @{
+            Uri     = "$baseUri/v1.0/users/$($account.userPrincipalName)"
+            Headers = $headers
+            Method  = 'GET'
+        }
+        $currentAccount = $null
+        $currentAccount = Invoke-RestMethod @splatWebRequest -Verbose:$false
+
+        if ($null -eq $currentAccount.id) {
+            throw "No User found in Azure AD with userPrincipalName $($account.userPrincipalName)"
+        }
+
+        $aRef = $currentAccount.id
+
+        $auditLogs.Add([PSCustomObject]@{
+                Action  = "CreateAccount"
+                Message = "Successfully correlated to Azure AD account $($currentAccount.userPrincipalName) ($($currentAccount.id))"
+                IsError = $false
+            })
     }
-    $currentAccount = $null
-    $currentAccount = Invoke-RestMethod @splatWebRequest -Verbose:$false
+    catch {
+        $ex = $PSItem
+        if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+            $errorObject = Resolve-HTTPError -Error $ex
 
-    if ($null -eq $currentAccount.id) {
-        throw "No User found in Azure AD with userPrincipalName $($account.userPrincipalName)"
+            $verboseErrorMessage = $errorObject.ErrorMessage
+
+            $auditErrorMessage = Resolve-MicrosoftGraphAPIErrorMessage -ErrorObject $errorObject.ErrorMessage
+        }
+
+        # If error message empty, fall back on $ex.Exception.Message
+        if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+            $verboseErrorMessage = $ex.Exception.Message
+        }
+        if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+            $auditErrorMessage = $ex.Exception.Message
+        }
+
+        Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
+
+        $auditLogs.Add([PSCustomObject]@{
+                Action  = "CreateAccount"
+                Message = "Error querying Azure AD account with userPrincipalName $($account.userPrincipalName). Error Message: $auditErrorMessage"
+                IsError = $True
+            })
     }
-
-    $aRef = $currentAccount.id
-
-    $auditLogs.Add([PSCustomObject]@{
-            Action  = "CreateAccount"
-            Message = "Successfully correlated to Azure AD account $($currentAccount.userPrincipalName) ($($currentAccount.id))"
-            IsError = $false
-        })
 }
-catch {
-    $ex = $PSItem
-    if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-        $errorObject = Resolve-HTTPError -Error $ex
-
-        $verboseErrorMessage = $errorObject.ErrorMessage
-
-        $auditErrorMessage = Resolve-MicrosoftGraphAPIErrorMessage -ErrorObject $errorObject.ErrorMessage
+finally {
+    # Check if auditLogs contains errors, if no errors are found, set success to true
+    if (-NOT($auditLogs.IsError -contains $true)) {
+        $success = $true
     }
 
-    # If error message empty, fall back on $ex.Exception.Message
-    if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
-        $verboseErrorMessage = $ex.Exception.Message
-    }
-    if ([String]::IsNullOrEmpty($auditErrorMessage)) {
-        $auditErrorMessage = $ex.Exception.Message
+    # Send results
+    $result = [PSCustomObject]@{
+        Success          = $success
+        AccountReference = $aRef
+        AuditLogs        = $auditLogs
+        Account          = $account
+
+        # Optionally return data for use in other systems
+        ExportData       = [PSCustomObject]@{
+            DisplayName       = $currentAccount.displayName
+            ID                = $currentAccount.id
+            UserPrincipalName = $currentAccount.userPrincipalName
+        }
     }
 
-    Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
-
-    $success = $false  
-    $auditLogs.Add([PSCustomObject]@{
-            Action  = "CreateAccount"
-            Message = "Error querying Azure AD account with userPrincipalName $($account.userPrincipalName). Error Message: $auditErrorMessage"
-            IsError = $True
-        })
+    Write-Output $result | ConvertTo-Json -Depth 10
 }
-
-# Send results
-$result = [PSCustomObject]@{
-    Success          = $success
-    AccountReference = $aRef
-    AuditLogs        = $auditLogs
-    Account          = $account
-}
-Write-Output $result | ConvertTo-Json -Depth 10
