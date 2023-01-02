@@ -221,5 +221,5 @@ finally {
         }
     }
 
-    Write-Output $result | ConvertTo-Json -Depth 10
+    Write-Output ($result | ConvertTo-Json -Depth 10)
 }
