@@ -318,6 +318,7 @@ try {
                 }
                 $body = ($bodyAddPermission | ConvertTo-Json -Depth 10)
     
+                $baseUri = "https://graph.microsoft.com/"
                 $splatWebRequest = @{
                     Uri     = "$baseUri/v1.0/groups/$($permission.Name)/members/`$ref"
                     Headers = $headers
@@ -390,11 +391,13 @@ try {
             try {
                 Write-Verbose "Revoking permission to Group '$($permission.Value) ($($permission.Name))' for account '$($aRef)'"
     
+                $baseUri = "https://graph.microsoft.com/"
                 $splatWebRequest = @{
                     Uri     = "$baseUri/v1.0/groups/$($permission.Name)/members/$($aRef)/`$ref"
                     Headers = $headers
                     Method  = 'DELETE'
                 }
+                Write-Warning ($splatWebRequest|Out-String)
     
                 if (-not($dryRun -eq $true)) {
                     $removePermission = Invoke-RestMethod @splatWebRequest -Verbose:$false
