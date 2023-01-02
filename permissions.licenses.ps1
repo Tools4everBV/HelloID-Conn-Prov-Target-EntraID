@@ -202,6 +202,6 @@ finally {
                 skuPartNumber = $_.skuPartNumber
             }
         }
-        Write-output $permission | ConvertTo-Json -Depth 10
+        Write-output ($permission | ConvertTo-Json -Depth 10)
     }
 }
