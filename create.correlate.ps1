@@ -174,7 +174,7 @@ try {
             })
     }
     catch {
-        # Clear log error messages (to avoid any previous content)
+        # Clean up error variables
         $verboseErrorMessage = $null
         $auditErrorMessage = $null
 

@@ -33,7 +33,7 @@ $AADAppSecret = $c.AADAppSecret
 
 # # Troubleshooting
 # $aRef = "9f4b2474-3c8d-4f92-94bc-58fed6e2d09b"
-# $dryRun = $false
+$dryRun = $false
 
 #region functions
 function New-AuthorizationHeaders {
@@ -144,7 +144,7 @@ function Resolve-MicrosoftGraphAPIErrorMessage {
 }
 #endregion functions
 
-try{
+try {
     # Get current Azure AD account
     try {
         if ($null -eq $aRef) {
@@ -168,7 +168,7 @@ try{
         }
     }
     catch {
-        # Clear log error messages (to avoid any previous content)
+        # Clean up error variables
         $verboseErrorMessage = $null
         $auditErrorMessage = $null
 
@@ -213,7 +213,7 @@ try{
     }
 
     # Grant permission Azure AD group for Azure AD account
-    if (-NOT($auditLogs.IsError -contains $true)) {
+    if (-NOT($null -eq $currentAccount.id)) {
         try {
             Write-Verbose "Granting permission to Group '$($pRef.Name) ($($pRef.id))' for account '$($currentAccount.userPrincipalName) ($($currentAccount.id))'"
 
@@ -242,6 +242,10 @@ try{
             }
         }
         catch {
+            # Clean up error variables
+            $verboseErrorMessage = $null
+            $auditErrorMessage = $null
+
             $ex = $PSItem
             if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
                 $errorObject = Resolve-HTTPError -Error $ex
@@ -260,11 +264,13 @@ try{
             }
         
             Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
-
+            
+            # Since the error message for adding a user that is already member is a 400 (bad request), we cannot check on a code or type
+            # this may result in an incorrect check when the error messages are in any other language than english, please change this accordingly
             if ($auditErrorMessage -like "*One or more added object references already exist for the following modified properties*") {
                 $auditLogs.Add([PSCustomObject]@{
                         Action  = "GrantPermission"
-                        Message = "Successfully granted to permission Group '$($pRef.Name) ($($pRef.id))' for account '$($currentAccount.userPrincipalName) ($($currentAccount.id))' (already a member)"
+                        Message = "User '$($currentAccount.userPrincipalName)' is already a member of the group '$($pRef.Name)'. Skipped grant of permission to group '$($pRef.Name) ($($pRef.id))' for user $($currentAccount.userPrincipalName) ($($currentAccount.id))'"
                         IsError = $false
                     }
                 )
@@ -279,7 +285,7 @@ try{
         }
     }
 }
-finally{
+finally {
     # Check if auditLogs contains errors, if no errors are found, set success to true
     if (-NOT($auditLogs.IsError -contains $true)) {
         $success = $true
