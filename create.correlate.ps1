@@ -27,7 +27,7 @@ $AADAppSecret = $c.AADAppSecret
 
 #region Change mapping here
 $account = [PSCustomObject]@{
-    userPrincipalName = $p.Accounts.MicrosoftAzureAD.userPrincipalName + '1'
+    userPrincipalName = $p.Accounts.MicrosoftActiveDirectory.userPrincipalName
 }
 #endregion Change mapping here
 
