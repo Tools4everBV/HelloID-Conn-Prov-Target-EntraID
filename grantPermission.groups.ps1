@@ -1,30 +1,30 @@
 #####################################################
 # HelloID-Conn-Prov-Target-Azure-Permissions-GrantPermission-Group
 #
-# Version: 1.1.0
+# Version: 1.1.1
 #####################################################
 # Initialize default values
 $c = $configuration | ConvertFrom-Json
 $p = $person | ConvertFrom-Json
+$success = $false # Set to false at start, at the end, only when no error occurs it is set to true
+$auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+# The accountReference object contains the Identification object provided in the create account call
 $aRef = $accountReference | ConvertFrom-Json
 
 # The permissionReference object contains the Identification object provided in the retrieve permissions call
 $pRef = $permissionReference | ConvertFrom-Json
-$success = $true # Set to true at start, because only when an error occurs it is set to false
-$auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-$VerbosePreference = "SilentlyContinue"
-$InformationPreference = "Continue"
-$WarningPreference = "Continue"
-
-# Enable TLS1.2
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
 # Set debug logging
 switch ($($c.isDebug)) {
     $true { $VerbosePreference = 'Continue' }
     $false { $VerbosePreference = 'SilentlyContinue' }
 }
+$InformationPreference = "Continue"
+$WarningPreference = "Continue"
 
 # Used to connect to Azure AD Graph API
 $AADtenantID = $c.AADtenantID
@@ -144,110 +144,43 @@ function Resolve-MicrosoftGraphAPIErrorMessage {
 }
 #endregion functions
 
-# Get current Azure AD account
-try {
-    if ($null -eq $aRef) {
-        throw "No Account Reference found in HelloID"
-    }
-
-    $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
-
-    Write-Verbose "Querying Azure AD account with id $($aRef)"
-    $baseUri = "https://graph.microsoft.com/"
-    $splatWebRequest = @{
-        Uri     = "$baseUri/v1.0/users/$($aRef)"
-        Headers = $headers
-        Method  = 'GET'
-    }
-    $currentAccount = $null
-    $currentAccount = Invoke-RestMethod @splatWebRequest -Verbose:$false
-
-    if ($null -eq $currentAccount.id) {
-        throw "No User found in Azure AD with id $($aRef)"
-    }
-}
-catch {
-    $ex = $PSItem
-    if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-        $errorObject = Resolve-HTTPError -Error $ex
-
-        $verboseErrorMessage = $errorObject.ErrorMessage
-
-        $auditErrorMessage = Resolve-MicrosoftGraphAPIErrorMessage -ErrorObject $errorObject.ErrorMessage
-    }
-
-    # If error message empty, fall back on $ex.Exception.Message
-    if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
-        $verboseErrorMessage = $ex.Exception.Message
-    }
-    if ([String]::IsNullOrEmpty($auditErrorMessage)) {
-        $auditErrorMessage = $ex.Exception.Message
-    }
-
-    Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
-
-    if ($auditErrorMessage -Like "No User found in Azure AD with id $($aRef)" -or $auditErrorMessage -Like "*(404) Not Found.*") {
-        if (-Not($dryRun -eq $True)) {
-            $success = $false
-            $auditLogs.Add([PSCustomObject]@{
-                    Action  = "GrantPermission"
-                    Message = "No Azure AD account found with id $($aRef). Possibly deleted."
-                    IsError = $false
-                })
-        }
-        else {
-            Write-Warning "DryRun: No Azure AD account found with id $($aRef). Possibly deleted."
-        }        
-    }
-    else {
-        $success = $false  
-        $auditLogs.Add([PSCustomObject]@{
-                Action  = "GrantPermission"
-                Message = "Error querying Azure AD account with id $($aRef). Error Message: $auditErrorMessage"
-                IsError = $True
-            })
-    }
-}
-
-# Grant permission Azure AD group for Azure AD account
-if ($null -ne $currentAccount.id) {
+try{
+    # Get current Azure AD account
     try {
-        Write-Verbose "Granting permission to Group '$($pRef.Name) ($($pRef.id))' for account '$($currentAccount.userPrincipalName) ($($currentAccount.id))'"
-
-        $bodyAddPermission = [PSCustomObject]@{
-            "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($aRef)"
+        if ($null -eq $aRef) {
+            throw "No Account Reference found in HelloID"
         }
-        $body = ($bodyAddPermission | ConvertTo-Json -Depth 10)
 
+        $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
+
+        Write-Verbose "Querying Azure AD account with id $($aRef)"
+        $baseUri = "https://graph.microsoft.com/"
         $splatWebRequest = @{
-            Uri     = "$baseUri/v1.0/groups/$($pRef.id)/members/`$ref"
+            Uri     = "$baseUri/v1.0/users/$($aRef)"
             Headers = $headers
-            Method  = 'POST'
-            Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
+            Method  = 'GET'
         }
-        
-        if (-not($dryRun -eq $true)) {
-            $addPermission = Invoke-RestMethod @splatWebRequest -Verbose:$false
-            $auditLogs.Add([PSCustomObject]@{
-                    Action  = "GrantPermission"
-                    Message = "Successfully granted permission to Group '$($pRef.Name) ($($pRef.id))' for account '$($currentAccount.userPrincipalName) ($($currentAccount.id))'"
-                    IsError = $false
-                })
-        }
-        else {
-            Write-Warning "DryRun: Would grant permission to Group '$($pRef.Name) ($($pRef.id))' for account '$($currentAccount.userPrincipalName) ($($currentAccount.id))'"
+        $currentAccount = $null
+        $currentAccount = Invoke-RestMethod @splatWebRequest -Verbose:$false
+
+        if ($null -eq $currentAccount.id) {
+            throw "No User found in Azure AD with id $($aRef)"
         }
     }
     catch {
+        # Clear log error messages (to avoid any previous content)
+        $verboseErrorMessage = $null
+        $auditErrorMessage = $null
+
         $ex = $PSItem
         if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
             $errorObject = Resolve-HTTPError -Error $ex
-    
+
             $verboseErrorMessage = $errorObject.ErrorMessage
-    
+
             $auditErrorMessage = Resolve-MicrosoftGraphAPIErrorMessage -ErrorObject $errorObject.ErrorMessage
         }
-    
+
         # If error message empty, fall back on $ex.Exception.Message
         if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
             $verboseErrorMessage = $ex.Exception.Message
@@ -255,33 +188,108 @@ if ($null -ne $currentAccount.id) {
         if ([String]::IsNullOrEmpty($auditErrorMessage)) {
             $auditErrorMessage = $ex.Exception.Message
         }
-    
+
         Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
 
-        if ($auditErrorMessage -like "*One or more added object references already exist for the following modified properties*") {
-            $success = $true
-            $auditLogs.Add([PSCustomObject]@{
-                    Action  = "GrantPermission"
-                    Message = "Successfully granted to permission Group '$($pRef.Name) ($($pRef.id))' for account '$($currentAccount.userPrincipalName) ($($currentAccount.id))' (already a member)"
-                    IsError = $false
-                }
-            )
+        if ($auditErrorMessage -Like "No User found in Azure AD with id $($aRef)" -or $auditErrorMessage -Like "*(404) Not Found.*") {
+            if (-Not($dryRun -eq $True)) {
+                $auditLogs.Add([PSCustomObject]@{
+                        Action  = "GrantPermission"
+                        Message = "No Azure AD account found with id $($aRef). Possibly deleted."
+                        IsError = $false
+                    })
+            }
+            else {
+                Write-Warning "DryRun: No Azure AD account found with id $($aRef). Possibly deleted."
+            }        
         }
         else {
-            $success = $false  
             $auditLogs.Add([PSCustomObject]@{
                     Action  = "GrantPermission"
-                    Message = "Error granting permission to Group '$($pRef.Name) ($($pRef.id))' for account '$($currentAccount.userPrincipalName) ($($currentAccount.id))'. Error Message: $auditErrorMessage"
+                    Message = "Error querying Azure AD account with id $($aRef). Error Message: $auditErrorMessage"
                     IsError = $True
                 })
         }
     }
-}
 
-# Send results
-$result = [PSCustomObject]@{
-    Success   = $success
-    AuditLogs = $auditLogs
-    Account   = $account
+    # Grant permission Azure AD group for Azure AD account
+    if (-NOT($auditLogs.IsError -contains $true)) {
+        try {
+            Write-Verbose "Granting permission to Group '$($pRef.Name) ($($pRef.id))' for account '$($currentAccount.userPrincipalName) ($($currentAccount.id))'"
+
+            $bodyAddPermission = [PSCustomObject]@{
+                "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($aRef)"
+            }
+            $body = ($bodyAddPermission | ConvertTo-Json -Depth 10)
+
+            $splatWebRequest = @{
+                Uri     = "$baseUri/v1.0/groups/$($pRef.id)/members/`$ref"
+                Headers = $headers
+                Method  = 'POST'
+                Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
+            }
+            
+            if (-not($dryRun -eq $true)) {
+                $addPermission = Invoke-RestMethod @splatWebRequest -Verbose:$false
+                $auditLogs.Add([PSCustomObject]@{
+                        Action  = "GrantPermission"
+                        Message = "Successfully granted permission to Group '$($pRef.Name) ($($pRef.id))' for account '$($currentAccount.userPrincipalName) ($($currentAccount.id))'"
+                        IsError = $false
+                    })
+            }
+            else {
+                Write-Warning "DryRun: Would grant permission to Group '$($pRef.Name) ($($pRef.id))' for account '$($currentAccount.userPrincipalName) ($($currentAccount.id))'"
+            }
+        }
+        catch {
+            $ex = $PSItem
+            if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+                $errorObject = Resolve-HTTPError -Error $ex
+        
+                $verboseErrorMessage = $errorObject.ErrorMessage
+        
+                $auditErrorMessage = Resolve-MicrosoftGraphAPIErrorMessage -ErrorObject $errorObject.ErrorMessage
+            }
+        
+            # If error message empty, fall back on $ex.Exception.Message
+            if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+                $verboseErrorMessage = $ex.Exception.Message
+            }
+            if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+                $auditErrorMessage = $ex.Exception.Message
+            }
+        
+            Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
+
+            if ($auditErrorMessage -like "*One or more added object references already exist for the following modified properties*") {
+                $auditLogs.Add([PSCustomObject]@{
+                        Action  = "GrantPermission"
+                        Message = "Successfully granted to permission Group '$($pRef.Name) ($($pRef.id))' for account '$($currentAccount.userPrincipalName) ($($currentAccount.id))' (already a member)"
+                        IsError = $false
+                    }
+                )
+            }
+            else {
+                $auditLogs.Add([PSCustomObject]@{
+                        Action  = "GrantPermission"
+                        Message = "Error granting permission to Group '$($pRef.Name) ($($pRef.id))' for account '$($currentAccount.userPrincipalName) ($($currentAccount.id))'. Error Message: $auditErrorMessage"
+                        IsError = $True
+                    })
+            }
+        }
+    }
 }
-Write-Output $result | ConvertTo-Json -Depth 10
+finally{
+    # Check if auditLogs contains errors, if no errors are found, set success to true
+    if (-NOT($auditLogs.IsError -contains $true)) {
+        $success = $true
+    }
+
+    # Send results
+    $result = [PSCustomObject]@{
+        Success   = $success
+        AuditLogs = $auditLogs
+    }
+
+    Write-Output ($result | ConvertTo-Json -Depth 10)
+}

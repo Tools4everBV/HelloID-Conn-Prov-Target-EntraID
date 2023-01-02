@@ -174,6 +174,10 @@ try {
         Write-Information "Successfully queried Microsoft 365 groups. Result count: $($m365Groups.Count)"
     }
     catch {
+        # Clear log error messages (to avoid any previous content)
+        $verboseErrorMessage = $null
+        $auditErrorMessage = $null
+
         $ex = $PSItem
         if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
             $errorObject = Resolve-HTTPError -Error $ex
