@@ -1,23 +1,21 @@
 #####################################################
 # HelloID-Conn-Prov-Target-Azure-Permissions-permissions-Groups
 #
-# Version: 1.1.0
+# Version: 1.1.1
 #####################################################
 # Initialize default values
 $c = $configuration | ConvertFrom-Json
 
-$VerbosePreference = "SilentlyContinue"
-$InformationPreference = "Continue"
-$WarningPreference = "Continue"
-
-# Enable TLS1.2
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
 # Set debug logging
 switch ($($c.isDebug)) {
     $true { $VerbosePreference = 'Continue' }
     $false { $VerbosePreference = 'SilentlyContinue' }
 }
+$InformationPreference = "Continue"
+$WarningPreference = "Continue"
 
 # Used to connect to Azure AD Graph API
 $AADtenantID = $c.AADtenantID
@@ -137,146 +135,154 @@ function Resolve-MicrosoftGraphAPIErrorMessage {
 
 # Get Microsoft 365 Groups (Currently only Microsoft 365 and Security groups are supported by the Microsoft Graph API: https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0)
 try {
-    $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
+    try {
+        $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
 
-    [System.Collections.ArrayList]$m365Groups = @()
+        [System.Collections.ArrayList]$m365Groups = @()
 
-    # Define the properties to select (comma seperated)
-    # Add optinal popertySelection (mandatory: id,displayName,onPremisesSyncEnabled)
-    $properties = @("id", "displayName", "onPremisesSyncEnabled", "groupTypes")
-    $select = "`$select=$($properties -join ",")"
+        # Define the properties to select (comma seperated)
+        # Add optinal popertySelection (mandatory: id,displayName,onPremisesSyncEnabled)
+        $properties = @("id", "displayName", "onPremisesSyncEnabled", "groupTypes")
+        $select = "`$select=$($properties -join ",")"
 
-    # Get Microsoft 365 Groups only (https://docs.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http)
-    Write-Verbose "Querying Microsoft 365 groups"
+        # Get Microsoft 365 Groups only (https://docs.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http)
+        Write-Verbose "Querying Microsoft 365 groups"
 
-    $baseUri = "https://graph.microsoft.com/"
-    $m365GroupFilter = "`$filter=groupTypes/any(c:c+eq+'Unified')"
-    $splatWebRequest = @{
-        Uri     = "$baseUri/v1.0/groups?$m365GroupFilter&$select"
-        Headers = $headers
-        Method  = 'GET'
-    }
-    $getM365GroupsResponse = $null
-    $getM365GroupsResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
-    foreach ($M365Group in $getM365GroupsResponse.value) { $null = $m365Groups.Add($M365Group) }
-    
-    while (![string]::IsNullOrEmpty($getM365GroupsResponse.'@odata.nextLink')) {
         $baseUri = "https://graph.microsoft.com/"
+        $m365GroupFilter = "`$filter=groupTypes/any(c:c+eq+'Unified')"
         $splatWebRequest = @{
-            Uri     = $getM365GroupsResponse.'@odata.nextLink'
+            Uri     = "$baseUri/v1.0/groups?$m365GroupFilter&$select"
             Headers = $headers
             Method  = 'GET'
         }
         $getM365GroupsResponse = $null
         $getM365GroupsResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
         foreach ($M365Group in $getM365GroupsResponse.value) { $null = $m365Groups.Add($M365Group) }
-    }
-
-    Write-Information "Successfully queried Microsoft 365 groups. Result count: $($m365Groups.Count)"
-}
-catch {
-    $ex = $PSItem
-    if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-        $errorObject = Resolve-HTTPError -Error $ex
-
-        $verboseErrorMessage = $errorObject.ErrorMessage
-
-        $auditErrorMessage = Resolve-MicrosoftGraphAPIErrorMessage -ErrorObject $errorObject.ErrorMessage
-    }
-
-    # If error message empty, fall back on $ex.Exception.Message
-    if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
-        $verboseErrorMessage = $ex.Exception.Message
-    }
-    if ([String]::IsNullOrEmpty($auditErrorMessage)) {
-        $auditErrorMessage = $ex.Exception.Message
-    }
-
-    Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
-
-    throw "Error querying Microsoft 365 Groups. Error Message: $auditErrorMessage"
-}
-
-$m365Groups | ForEach-Object {
-    $permission = @{
-        displayName    = "Microsoft 365 Group - $($_.displayName)"
-        identification = @{
-            Id   = $_.id
-            Name = $_.displayName
+        
+        while (![string]::IsNullOrEmpty($getM365GroupsResponse.'@odata.nextLink')) {
+            $baseUri = "https://graph.microsoft.com/"
+            $splatWebRequest = @{
+                Uri     = $getM365GroupsResponse.'@odata.nextLink'
+                Headers = $headers
+                Method  = 'GET'
+            }
+            $getM365GroupsResponse = $null
+            $getM365GroupsResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
+            foreach ($M365Group in $getM365GroupsResponse.value) { $null = $m365Groups.Add($M365Group) }
         }
+
+        Write-Information "Successfully queried Microsoft 365 groups. Result count: $($m365Groups.Count)"
     }
-    Write-output $permission | ConvertTo-Json -Depth 10
+    catch {
+        $ex = $PSItem
+        if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+            $errorObject = Resolve-HTTPError -Error $ex
+
+            $verboseErrorMessage = $errorObject.ErrorMessage
+
+            $auditErrorMessage = Resolve-MicrosoftGraphAPIErrorMessage -ErrorObject $errorObject.ErrorMessage
+        }
+
+        # If error message empty, fall back on $ex.Exception.Message
+        if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+            $verboseErrorMessage = $ex.Exception.Message
+        }
+        if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+            $auditErrorMessage = $ex.Exception.Message
+        }
+
+        Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
+
+        throw "Error querying Microsoft 365 Groups. Error Message: $auditErrorMessage"
+    }
+}
+finally {
+    # Send results
+    $m365Groups | ForEach-Object {
+        $permission = @{
+            displayName    = "Microsoft 365 Group - $($_.displayName)"
+            identification = @{
+                Id   = $_.id
+                Name = $_.displayName
+            }
+        }
+        Write-output ($permission | ConvertTo-Json -Depth 10)
+    }
 }
 
 # Get Security Groups (Currently only Microsoft 365 and Security groups are supported by the Microsoft Graph API: https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0)
 try {
-    $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
+    try {
+        $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
 
-    [System.Collections.ArrayList]$securityGroups = @()
+        [System.Collections.ArrayList]$securityGroups = @()
 
-    # Define the properties to select (comma seperated)
-    # Add optinal popertySelection (mandatory: id,displayName,onPremisesSyncEnabled)
-    $properties = @("id", "displayName", "onPremisesSyncEnabled", "groupTypes")
-    $select = "`$select=$($properties -join ",")"
+        # Define the properties to select (comma seperated)
+        # Add optinal popertySelection (mandatory: id,displayName,onPremisesSyncEnabled)
+        $properties = @("id", "displayName", "onPremisesSyncEnabled", "groupTypes")
+        $select = "`$select=$($properties -join ",")"
 
-    # Get Security Groups only (https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0)
-    Write-Verbose "Querying Security groups"
+        # Get Security Groups only (https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0)
+        Write-Verbose "Querying Security groups"
 
-    $securityGroupFilter = "`$filter=NOT(groupTypes/any(c:c+eq+'DynamicMembership')) and onPremisesSyncEnabled eq null and mailEnabled eq false and securityEnabled eq true"
-    $baseUri = "https://graph.microsoft.com/"
-    $splatWebRequest = @{
-        Uri     = "$baseUri/v1.0/groups?$securityGroupFilter&$select&`$count=true"
-        Headers = $headers
-        Method  = 'GET'
-    }
-    $getSecurityGroupsResponse = $null
-    $getSecurityGroupsResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
-    foreach ($SecurityGroup in $getSecurityGroupsResponse.value) { $null = $securityGroups.Add($SecurityGroup) }
-    
-    while (![string]::IsNullOrEmpty($getSecurityGroupsResponse.'@odata.nextLink')) {
+        $securityGroupFilter = "`$filter=NOT(groupTypes/any(c:c+eq+'DynamicMembership')) and onPremisesSyncEnabled eq null and mailEnabled eq false and securityEnabled eq true"
         $baseUri = "https://graph.microsoft.com/"
         $splatWebRequest = @{
-            Uri     = $getSecurityGroupsResponse.'@odata.nextLink'
+            Uri     = "$baseUri/v1.0/groups?$securityGroupFilter&$select&`$count=true"
             Headers = $headers
             Method  = 'GET'
         }
         $getSecurityGroupsResponse = $null
         $getSecurityGroupsResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
         foreach ($SecurityGroup in $getSecurityGroupsResponse.value) { $null = $securityGroups.Add($SecurityGroup) }
-    }
-
-    Write-Information "Successfully queried Security groups. Result count: $($securityGroups.Count)"
-}
-catch {
-    $ex = $PSItem
-    if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-        $errorObject = Resolve-HTTPError -Error $ex
-
-        $verboseErrorMessage = $errorObject.ErrorMessage
-
-        $auditErrorMessage = Resolve-MicrosoftGraphAPIErrorMessage -ErrorObject $errorObject.ErrorMessage
-    }
-
-    # If error message empty, fall back on $ex.Exception.Message
-    if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
-        $verboseErrorMessage = $ex.Exception.Message
-    }
-    if ([String]::IsNullOrEmpty($auditErrorMessage)) {
-        $auditErrorMessage = $ex.Exception.Message
-    }
-
-    Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
-
-    throw "Error querying Security Groups. Error Message: $auditErrorMessage"
-}
-
-$securityGroups | ForEach-Object {
-    $permission = @{
-        displayName    = "Security Group - $($_.displayName)"
-        identification = @{
-            Id   = $_.id
-            Name = $_.displayName
+        
+        while (![string]::IsNullOrEmpty($getSecurityGroupsResponse.'@odata.nextLink')) {
+            $baseUri = "https://graph.microsoft.com/"
+            $splatWebRequest = @{
+                Uri     = $getSecurityGroupsResponse.'@odata.nextLink'
+                Headers = $headers
+                Method  = 'GET'
+            }
+            $getSecurityGroupsResponse = $null
+            $getSecurityGroupsResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
+            foreach ($SecurityGroup in $getSecurityGroupsResponse.value) { $null = $securityGroups.Add($SecurityGroup) }
         }
+
+        Write-Information "Successfully queried Security groups. Result count: $($securityGroups.Count)"
     }
-    Write-output $permission | ConvertTo-Json -Depth 10
+    catch {
+        $ex = $PSItem
+        if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+            $errorObject = Resolve-HTTPError -Error $ex
+
+            $verboseErrorMessage = $errorObject.ErrorMessage
+
+            $auditErrorMessage = Resolve-MicrosoftGraphAPIErrorMessage -ErrorObject $errorObject.ErrorMessage
+        }
+
+        # If error message empty, fall back on $ex.Exception.Message
+        if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+            $verboseErrorMessage = $ex.Exception.Message
+        }
+        if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+            $auditErrorMessage = $ex.Exception.Message
+        }
+
+        Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
+
+        throw "Error querying Security Groups. Error Message: $auditErrorMessage"
+    }
+}
+finally {
+    # Send results
+    $securityGroups | ForEach-Object {
+        $permission = @{
+            displayName    = "Security Group - $($_.displayName)"
+            identification = @{
+                Id   = $_.id
+                Name = $_.displayName
+            }
+        }
+        Write-output ($permission | ConvertTo-Json -Depth 10)
+    }
 }
