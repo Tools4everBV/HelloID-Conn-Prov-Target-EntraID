@@ -217,7 +217,7 @@ try {
         }
     }
 
-    # Grant permission Azure AD group for Azure AD account
+    # Revoke AzureAD Groupmembership
     if (-NOT($null -eq $currentAccount.id)) {
         try {
             Write-Verbose "Granting permission to Group '$($pRef.Name) ($($pRef.id))' for account '$($currentAccount.userPrincipalName) ($($currentAccount.id))'"
@@ -275,7 +275,7 @@ try {
             if ($auditErrorMessage -like "*One or more added object references already exist for the following modified properties*") {
                 $auditLogs.Add([PSCustomObject]@{
                         Action  = "GrantPermission"
-                        Message = "User '$($currentAccount.userPrincipalName)' is already a member of the group '$($pRef.Name)'. Skipped grant of permission to group '$($pRef.Name) ($($pRef.id))' for user $($currentAccount.userPrincipalName) ($($currentAccount.id))'"
+                        Message = "User '$($currentAccount.userPrincipalName)' is already a member of the group '$($pRef.Name)'. Skipped grant of permission to group '$($pRef.Name) ($($pRef.id))' for user '$($currentAccount.userPrincipalName) ($($currentAccount.id))'"
                         IsError = $false
                     }
                 )

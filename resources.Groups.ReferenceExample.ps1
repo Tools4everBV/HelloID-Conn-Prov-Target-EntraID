@@ -1,7 +1,7 @@
 #####################################################
-# HelloID-Conn-Prov-Target-ActiveDirectory-DynamicPermissions-Groups
+# HelloID-Conn-Prov-Target-ActiveDirectory-ResourceCreation-Groups
 #
-# Version: 1.2.1
+# Version: 1.1.1
 #####################################################
 #region Initialize default properties
 $c = $configuration | ConvertFrom-Json
@@ -202,11 +202,12 @@ try {
 
             $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
             
-            Write-Verbose "Querying Azure AD group with displayname '$($groupName)'"
+            $filter = "displayName+eq+'$($groupName)'"
+            Write-Verbose "Querying Azure AD group that matches filter '$($filter)'"
 
             $baseUri = "https://graph.microsoft.com/"
             $splatWebRequest = @{
-                Uri     = [uri]::EscapeUriString("$baseUri/v1.0/groups?`$filter=displayName+eq+'$($groupName)'")
+                Uri     = "$baseUri/v1.0/groups?`$filter=$($filter)"
                 Headers = $headers
                 Method  = 'GET'
             }

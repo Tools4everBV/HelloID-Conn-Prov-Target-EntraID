@@ -217,7 +217,7 @@ try{
         }
     }
 
-    # Revoke permission Azure AD group for Azure AD account
+    # Revoke AzureAD Groupmembership
     if ($null -ne $currentAccount.id) {
         try {
             Write-Verbose "Revoking permission to Group '$($pRef.Name) ($($pRef.id))' for account '$($currentAccount.userPrincipalName) ($($currentAccount.id))'"
