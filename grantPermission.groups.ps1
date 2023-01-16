@@ -217,7 +217,7 @@ try {
         }
     }
 
-    # Revoke AzureAD Groupmembership
+    # Grant AzureAD Groupmembership
     if (-NOT($null -eq $currentAccount.id)) {
         try {
             Write-Verbose "Granting permission to Group '$($pRef.Name) ($($pRef.id))' for account '$($currentAccount.userPrincipalName) ($($currentAccount.id))'"
