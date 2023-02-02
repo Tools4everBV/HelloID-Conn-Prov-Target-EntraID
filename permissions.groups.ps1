@@ -206,8 +206,11 @@ try {
 finally {
     # Send results
     $m365Groups | ForEach-Object {
+        # Shorten DisplayName to max. 100 chars
+        $displayName = "Microsoft 365 Group - $($_.displayName)"
+        $displayName = $displayName.substring(0, [System.Math]::Min(100, $displayName.Length)) 
         $permission = @{
-            displayName    = "Microsoft 365 Group - $($_.displayName)"
+            displayName    = $displayName
             identification = @{
                 Id   = $_.id
                 Name = $_.displayName
@@ -283,8 +286,11 @@ try {
 finally {
     # Send results
     $securityGroups | ForEach-Object {
+        # Shorten DisplayName to max. 100 chars
+        $displayName = "Security Group - $($_.displayName)"
+        $displayName = $displayName.substring(0, [System.Math]::Min(100, $displayName.Length)) 
         $permission = @{
-            displayName    = "Security Group - $($_.displayName)"
+            displayName    = $displayName
             identification = @{
                 Id   = $_.id
                 Name = $_.displayName
