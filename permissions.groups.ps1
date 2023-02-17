@@ -154,7 +154,7 @@ try {
         $baseUri = "https://graph.microsoft.com/"
         $m365GroupFilter = "`$filter=groupTypes/any(c:c+eq+'Unified')"
         $splatWebRequest = @{
-            Uri     = "$baseUri/v1.0/groups?$m365GroupFilter&$select"
+            Uri     = "$baseUri/v1.0/groups?$m365GroupFilter&$select&`$top=999&`$count=true"
             Headers = $headers
             Method  = 'GET'
         }
@@ -238,7 +238,7 @@ try {
         $securityGroupFilter = "`$filter=NOT(groupTypes/any(c:c+eq+'DynamicMembership')) and onPremisesSyncEnabled eq null and mailEnabled eq false and securityEnabled eq true"
         $baseUri = "https://graph.microsoft.com/"
         $splatWebRequest = @{
-            Uri     = "$baseUri/v1.0/groups?$securityGroupFilter&$select&`$count=true"
+            Uri     = "$baseUri/v1.0/groups?$securityGroupFilter&$select&`$top=999&`$count=true"
             Headers = $headers
             Method  = 'GET'
         }
