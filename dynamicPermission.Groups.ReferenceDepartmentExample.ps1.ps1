@@ -1,7 +1,7 @@
 #####################################################
 # HelloID-Conn-Prov-Target-ActiveDirectory-DynamicPermissions-Groups
 #
-# Version: 1.1.1
+# Version: 1.1.2
 #####################################################
 #region Initialize default properties
 $c = ConvertFrom-Json $configuration
@@ -119,7 +119,7 @@ function New-AuthorizationHeaders {
         Write-Output $headers  
     }
     catch {
-        $PSCmdlet.ThrowTerminatingError($_)
+        throw $_
     }
 }
 

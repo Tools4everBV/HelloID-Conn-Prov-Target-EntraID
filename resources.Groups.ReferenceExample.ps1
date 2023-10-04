@@ -1,7 +1,7 @@
 #####################################################
 # HelloID-Conn-Prov-Target-ActiveDirectory-ResourceCreation-Groups
 #
-# Version: 1.1.1
+# Version: 1.1.2
 #####################################################
 #region Initialize default properties
 $c = $configuration | ConvertFrom-Json
@@ -93,7 +93,7 @@ function New-AuthorizationHeaders {
         Write-Output $headers  
     }
     catch {
-        $PSCmdlet.ThrowTerminatingError($_)
+        throw $_
     }
 }
 

@@ -1,7 +1,7 @@
 #####################################################
 # HelloID-Conn-Prov-Target-Azure-Permissions-Create-Correlate
 #
-# Version: 1.1.1
+# Version: 1.1.2
 #####################################################
 # Initialize default values
 $c = $configuration | ConvertFrom-Json
@@ -82,7 +82,7 @@ function New-AuthorizationHeaders {
         Write-Output $headers  
     }
     catch {
-        $PSCmdlet.ThrowTerminatingError($_)
+        throw $_
     }
 }
 
