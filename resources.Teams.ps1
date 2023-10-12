@@ -1,7 +1,7 @@
 #####################################################
 # HelloID-Conn-Prov-Target-AzureActiveDirectory-ResourceCreation-Teams
 #
-# Version: 1.1.1
+# Version: 1.0.0
 #####################################################
 #region Initialize default properties
 $c = $configuration | ConvertFrom-Json
