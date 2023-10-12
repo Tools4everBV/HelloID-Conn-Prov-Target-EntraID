@@ -1,5 +1,5 @@
 #####################################################
-# HelloID-Conn-Prov-Target-ActiveDirectory-ResourceCreation-Groups
+# HelloID-Conn-Prov-Target-AzureActiveDirectory-ResourceCreation-Groups
 #
 # Version: 1.1.1
 #####################################################

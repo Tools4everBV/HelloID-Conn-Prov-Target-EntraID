@@ -1,5 +1,5 @@
 #####################################################
-# HelloID-Conn-Prov-Target-ActiveDirectory-DynamicPermissions-Groups
+# HelloID-Conn-Prov-Target-AzureActiveDirectory-DynamicPermissions-Groups
 #
 # Version: 1.1.1
 #####################################################
