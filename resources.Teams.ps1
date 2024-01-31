@@ -1,7 +1,7 @@
 #####################################################
-# HelloID-Conn-Prov-Target-ActiveDirectory-ResourceCreation-Groups
+# HelloID-Conn-Prov-Target-AzureActiveDirectory-ResourceCreation-Teams
 #
-# Version: 1.1.1
+# Version: 1.0.0
 #####################################################
 #region Initialize default properties
 $c = $configuration | ConvertFrom-Json
@@ -25,8 +25,11 @@ $AADtenantID = $c.AADtenantID
 $AADAppId = $c.AADAppId
 $AADAppSecret = $c.AADAppSecret
 
+# Hardcoded Object ID of Azure AD User to set as owner of team
+$ownerAADUserId = "12345678-abcd-efgh-ijkl-mnopqrstuvwxyz90"
+
 # Troubleshooting
-# $dryRun = $false
+$dryRun = $false
 
 #region functions
 function Get-ADSanitizeGroupName {
@@ -44,11 +47,6 @@ function Get-ADSanitizeGroupName {
     $newName = $newName -replace '\.\.\.', '.'
     $newName = $newName -replace '\.\.', '.'
     return $newName
-}
-
-function Remove-StringLatinCharacters {
-    PARAM ([string]$String)
-    [Text.Encoding]::ASCII.GetString([Text.Encoding]::GetEncoding("Cyrillic").GetBytes($String))
 }
 
 function New-AuthorizationHeaders {
@@ -89,6 +87,8 @@ function New-AuthorizationHeaders {
         $headers.Add('Authorization', "Bearer $accesstoken")
         $headers.Add('Accept', 'application/json')
         $headers.Add('Content-Type', 'application/json')
+        # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
+        $headers.Add('ConsistencyLevel', 'eventual')
 
         Write-Output $headers  
     }
@@ -165,132 +165,105 @@ function Resolve-MicrosoftGraphAPIErrorMessage {
 #region Execute
 # In preview only the first 10 items of the SourceData are used
 try {
-    foreach ($resource in $rRef.SourceData) {
+    foreach ($resource in $rRef.SourceData | Where-Object { -not[String]::IsNullOrEmpty($_.Name) -and -not[String]::IsNullOrEmpty($_.Code) }) {
         Write-Verbose "Checking $($resource)"
         try {
             #region Change mapping here
             # The names of security principal objects can contain all Unicode characters except the special LDAP characters defined in RFC 2253.
             # This list of special characters includes: a leading space a trailing space and any of the following characters: # , + " \ < > 
-            # A group account cannot consist solely of numbers, periods (.), or spaces. Any leading periods or spaces are cropped.
+            # A team account cannot consist solely of numbers, periods (.), or spaces. Any leading periods or spaces are cropped.
             # https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc776019(v=ws.10)?redirectedfrom=MSDN
             # https://www.ietf.org/rfc/rfc2253.txt
+            $teamVisibility = "Private"
 
-            $groupType = "Microsoft 365 group"  # "Microsoft 365 group" or "Security group"
-            $groupVisibility = "Public"
+            # Costcenter
+            $teamName = "$($resource.Name)"
+            # Sanitize team name, e.g. replace ' - ' with '_' or other sanitization actions 
+            $teamName = Get-ADSanitizeGroupName -Name $teamName
 
-            # # Example: department_<departmentname> (department differs from other objects as the property for the name is "DisplayName", not "Name")
-            $groupName = "department_" + "$($resource.DisplayName)"
-            # Sanitize group name, e.g. replace ' - ' with '_' or other sanitization actions 
-            $groupName = Get-ADSanitizeGroupName -Name $groupName
-
-            $groupDescription = "Group for department " + "$($resource.DisplayName)"
-
-            # Example: title_<titlename>
-            # $groupName = "title_" + "$($resource.Name)"
-            # Sanitize group name, e.g. replace ' - ' with '_' or other sanitization actions 
-            # $groupName = Get-ADSanitizeGroupName -Name $groupName
-
-            # $groupDescription = "Group for title " + "$($resource.Name)"
-
-            # Example: customfield_ <customfield> (custom fields consists of only one attribute, no object with multiple attributes present!)
-            # $groupName = "customfield_" + "$($resource)"
-            # Sanitize group name, e.g. replace ' - ' with '_' or other sanitization actions 
-            # $groupName = Get-ADSanitizeGroupName -Name $groupName
-
-            # $groupDescription = "Group for custom field " + "$($resource)"
+            $teamDescription = "$($resource.Code)"
             #endregion Change mapping here
 
             $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
             
-            $filter = "displayName+eq+'$($groupName)'"
+            $teamsFilter = "resourceProvisioningOptions/Any(x:x eq 'Team')"
+            $filter = "description+eq+'$($teamDescription)' & $teamsFilter"
             Write-Verbose "Querying Azure AD group that matches filter '$($filter)'"
 
             $baseUri = "https://graph.microsoft.com/"
             $splatWebRequest = @{
-                Uri     = "$baseUri/v1.0/groups?`$filter=$($filter)"
+                Uri     = "$baseUri/v1.0/groups?`$filter=$($filter)&`$count=true"
                 Headers = $headers
                 Method  = 'GET'
             }
-            $currentGroup = $null
-            $currentGroupResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
-            $currentGroup = $currentGroupResponse.Value
+            $currentTeam = $null
+            $currentTeamResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
+            $currentTeam = $currentTeamResponse.Value
 
-            if ($null -eq $currentGroup.Id) {
-                $groupExists = $false
+            if ($null -eq $currentTeam.Id) {
+                $teamExists = $false
             }
             else {
-                $groupExists = $true
+                $teamExists = $true
             }
 
             # If resource does not exist
-            if ($groupExists -eq $False) {
+            if ($teamExists -eq $False) {
                 <# Resource creation preview uses a timeout of 30 seconds
                 while actual run has timeout of 10 minutes #>
-                Switch ($groupType) {
-                    'Microsoft 365 group' {
-                        $group = [PSCustomObject]@{
-                            displayName     = $groupName
-                            description     = $groupDescription
-                            mailNickname    = $groupName.Replace(" ", "")
-                            visibility      = $groupVisibility
 
-                            groupTypes      = @("Unified") # Needs to be set to with 'Unified' to create Microsoft 365 group
-                            mailEnabled     = $true # Needs to be enabled to create Microsoft 365 group
-                            securityEnabled = $false # Needs to be disabled to create Microsoft 365 group
+                $teamObject = [PSCustomObject]@{
+                    "template@odata.bind" = "https://graph.microsoft.com/v1.0/teamsTemplates('standard')"
+                    displayName           = $teamName
+                    description           = $teamDescription
+                    visibility            = $teamVisibility
 
-                            # allowExternalSenders = $allowExternalSenders - Not supported with Application permissions
-                            # autoSubscribeNewMembers = $autoSubscribeNewMembers - Not supported with Application permissions
+                    members               = [System.Collections.ArrayList]@()
+                }
+
+                if (-not[string]::IsNullOrEmpty($ownerAADUserId)) {
+                    [void]$teamObject.members.add(
+                        @{
+                            "@odata.type"     = "#microsoft.graph.aadUserConversationMember"
+                            roles             = @(
+                                "owner"
+                            )
+                            "user@odata.bind" = "https://graph.microsoft.com/v1.0/users('$ownerAADUserId')"
                         }
-                    }
-
-                    'Security group' {
-                        $group = [PSCustomObject]@{
-                            displayName     = $groupName
-                            description     = $groupDescription
-                            mailNickname    = $groupName.Replace(" ", "")
-                            visibility      = $groupVisibility
-
-                            #groupTypes = @("") # Needs to be empty to create Security group
-                            mailEnabled     = $false # Needs to be disabled to create Security group
-                            securityEnabled = $true # Needs to be enabled to create Security group
-
-                            # allowExternalSenders = $allowExternalSenders - Not supported with Application permissions
-                            # autoSubscribeNewMembers = $autoSubscribeNewMembers - Not supported with Application permissions                            
-                        }
-                    }
+                    )
                 }
 
                 if (-Not($dryRun -eq $True)) {
                     $headers = New-AuthorizationHeaders -TenantId $AADtenantID -ClientId $AADAppId -ClientSecret $AADAppSecret
 
-                    $body = $group | ConvertTo-Json -Depth 10
+                    $body = $teamObject | ConvertTo-Json -Depth 10
                     $baseUri = "https://graph.microsoft.com/"
                     $splatWebRequest = @{
-                        Uri     = "$baseUri/v1.0/groups"
+                        Uri     = "$baseUri/v1.0/teams"
                         Headers = $headers
                         Method  = 'POST'
                         Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
                     }
-                    $newGroup = $null
-                    $newGroup = Invoke-RestMethod @splatWebRequest -Verbose:$false
+                    $newTeam = $null
+                    $newTeam = Invoke-RestMethod @splatWebRequest -Verbose:$false
 
                     $auditLogs.Add([PSCustomObject]@{
-                            Message = "Created group: $($newGroup.displayName) ($($newGroup.Id))"
+                            Message = "Created team: $($teamObject.displayName) ($($teamObject.description))"
                             Action  = "CreateResource"
                             IsError = $false
                         })
                 }
                 else {
-                    Write-Warning "DryRun: would create group $($groupName): $($group | ConvertTo-Json)"
+                    Write-Warning "DryRun: would create team $($teamName): $($teamObject | ConvertTo-Json)"
                 }
             }
             else {
                 if ($dryRun -eq $True) {
-                    Write-Warning "Group $($groupName) already exists"
+                    Write-Warning "Team $($teamName) already exists"
                 }
 
                 # $auditLogs.Add([PSCustomObject]@{
-                #     Message = "Skipped creation of group: $($newGroup.displayName) ($($newGroup.Id))"
+                #     Message = "Skipped creation of team: $($newTeam.displayName) ($($newTeam.Id))"
                 #     Action  = "CreateResource"
                 #     IsError = $false
                 # })
@@ -320,10 +293,10 @@ try {
 
             Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"
 
-            Write-Warning "Failed to create group $($groupName): $($group | ConvertTo-Json). Error Message: $auditErrorMessage"
+            # Write-Warning "Failed to create team $($teamName): $($teamObject | ConvertTo-Json). Error Message: $auditErrorMessage"
 
             $auditLogs.Add([PSCustomObject]@{
-                    Message = "Failed to create group $($groupName). Error Message: $auditErrorMessage"
+                    Message = "Failed to create team $($teamName). Error Message: $auditErrorMessage"
                     Action  = "CreateResource"
                     IsError = $true
                 })

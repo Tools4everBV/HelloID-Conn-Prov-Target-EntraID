@@ -22,6 +22,7 @@
   - [Configuring App Permissions](#configuring-app-permissions)
   - [Authentication and Authorization](#authentication-and-authorization)
   - [Connection settings](#connection-settings)
+- [Remarks](#remarks)
 - [Getting help](#getting-help)
 - [HelloID Docs](#helloid-docs)
 
@@ -87,6 +88,9 @@ The following settings are required to connect to the API.
 | Azure AD Tenant ID | Id of the Azure tenant |
 | Azure AD App ID | Id of the Azure app |
 | Azure AD App Secret | Secret of the Azure app |
+
+## Remarks
+- The dynamic permissions script for Teams is almost the same as the one for Groups. The only difference is an additional filter for Teams-enabled groups. This is due to the fact that a Team is always a M365 group and we can manage the members of that group instead of in Teams itself.
 
 ## Getting help
 > _For more information on how to configure a HelloID PowerShell connector, please refer to our [documentation](https://docs.helloid.com/hc/en-us/articles/360012518799-How-to-add-a-target-system) pages_
