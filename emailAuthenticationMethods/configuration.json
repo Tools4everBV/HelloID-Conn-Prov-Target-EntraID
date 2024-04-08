@@ -38,17 +38,27 @@
     "defaultValue": false,
     "templateOptions": {
       "label": "Correlate only",
-      "description": "When toggled, this connector will only correlate to an existing account and skip all further account lifecycle actions",
+      "description": "When toggled, this connector will only correlate to an existing account and skip all further account lifecycle actions.",
       "required": false
     }
   },
   {
-    "key": "isDebug",
+    "key": "emailAuthenticationMethodOnlySetEmailWhenEmpty",
     "type": "checkbox",
     "defaultValue": false,
     "templateOptions": {
-      "label": "Toggle debug logging",
-      "description": "When toggled, debug logging will be displayed",
+      "label": "Only set email authentication method 'email' when empty",
+      "description": "When toggled, the phone authentication method 'email' will only be updated when currently empty and will not overwrite existing data.",
+      "required": false
+    }
+  },
+  {
+    "key": "emailAuthenticationMethodRemoveEmailWhenRevokingEntitlement",
+    "type": "checkbox",
+    "defaultValue": false,
+    "templateOptions": {
+      "label": "Delete email authentication method 'email' when revoking the entitlement",
+      "description": "When toggled, the phone authentication method 'email' will be deleted when revoking the entitlement.",
       "required": false
     }
   }

@@ -1,0 +1,115 @@
+[
+  {
+    "key": "TenantID",
+    "type": "input",
+    "defaultValue": "",
+    "templateOptions": {
+      "label": "App Registration Directory (tenant) ID",
+      "placeholder": "615g75e2-0v74-4a3c-6gaf-241t1q4m7f54",
+      "description": "",
+      "required": true
+    }
+  },
+  {
+    "key": "AppId",
+    "type": "input",
+    "defaultValue": "",
+    "templateOptions": {
+      "label": "App Registration Application (client) ID",
+      "placeholder": "9c12a9b1-34c5-678d-ac34-8a890100d46d",
+      "description": "",
+      "required": true
+    }
+  },
+  {
+    "key": "AppSecret",
+    "type": "input",
+    "defaultValue": "",
+    "templateOptions": {
+      "label": "App Registration Client Secret",
+      "type": "password",
+      "placeholder": "3lib1234NwDvx.6abc98M._r0yz_7h_B34",
+      "required": true
+    }
+  },
+  {
+    "key": "correlateOnly",
+    "type": "checkbox",
+    "defaultValue": false,
+    "templateOptions": {
+      "label": "Correlate only",
+      "description": "When toggled, this connector will only correlate to an existing account and skip all further account lifecycle actions.",
+      "required": false
+    }
+  },
+  {
+    "key": "phoneAuthenticationMethodOnlySetMobileWhenEmpty",
+    "type": "checkbox",
+    "defaultValue": false,
+    "templateOptions": {
+      "label": "Only set phone authentication method 'mobile' when empty",
+      "description": "When toggled, the phone authentication method 'mobile' will only be updated when currently empty and will not overwrite existing data.",
+      "required": false
+    }
+  },
+  {
+    "key": "phoneAuthenticationMethodRemoveMobileWhenRevokingEntitlement",
+    "type": "checkbox",
+    "defaultValue": false,
+    "templateOptions": {
+      "label": "Delete phone authentication method 'mobile' when revoking the entitlement",
+      "description": "When toggled, the phone authentication method 'mobile' will be deleted when revoking the entitlement.",
+      "required": false
+    }
+  },
+  {
+    "key": "phoneAuthenticationMethodOnlySetAlternateMobileWhenEmpty",
+    "type": "checkbox",
+    "defaultValue": false,
+    "templateOptions": {
+      "label": "Only set phone authentication method 'alternate mobile' when empty",
+      "description": "When toggled, the phone authentication method 'alternate mobile' will only be updated when currently empty and will not overwrite existing data.",
+      "required": false
+    }
+  },
+  {
+    "key": "phoneAuthenticationMethodRemoveAlternateMobileWhenRevokingEntitlement",
+    "type": "checkbox",
+    "defaultValue": false,
+    "templateOptions": {
+      "label": "Delete phone authentication method 'alternate mobile' when revoking the entitlement",
+      "description": "When toggled, the phone authentication method 'alternate mobile' will be deleted when revoking the entitlement.",
+      "required": false
+    }
+  },
+  {
+    "key": "phoneAuthenticationMethodOnlySetOfficeWhenEmpty",
+    "type": "checkbox",
+    "defaultValue": false,
+    "templateOptions": {
+      "label": "Only set phone authentication method 'office' when empty",
+      "description": "When toggled, the phone authentication method 'office' will only be updated when currently empty and will not overwrite existing data.",
+      "required": false
+    }
+  },
+  {
+    "key": "phoneAuthenticationMethodRemoveOfficeWhenRevokingEntitlement",
+    "type": "checkbox",
+    "defaultValue": false,
+    "templateOptions": {
+      "label": "Delete phone authentication method 'office' when revoking the entitlement",
+      "description": "When toggled, the phone authentication method 'office' will be deleted when revoking the entitlement.",
+      "required": false
+    }
+  },
+  {
+    "key": "isDebug",
+    "type": "checkbox",
+    "defaultValue": false,
+    "templateOptions": {
+      "label": "Toggle debug logging",
+      "description": "When toggled, debug logging will be displayed",
+      "required": false
+    }
+  }
+]
