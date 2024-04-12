@@ -214,8 +214,8 @@ $correlationField = "id"
 $correlationValue = $actionContext.References.Account
 
 $account = [PSCustomObject]$actionContext.Data
-# Remove properties phoneAuthenticationMethod and emailAuthenticationMethod as they are set within seperate actions
-$account = $account | Select-Object -ExcludeProperty phoneAuthenticationMethod, emailAuthenticationMethod
+# Remove properties phoneAuthenticationMethod, emailAuthenticationMethod and manager as they are set within seperate actions
+$account = $account | Select-Object -ExcludeProperty phoneAuthenticationMethod, emailAuthenticationMethod, manager
 # Remove properties with null-values
 $account.PsObject.Properties | ForEach-Object {
     # Remove properties with null-values
@@ -232,6 +232,15 @@ $accountPropertiesToCompare = $account.PsObject.Properties.Name
 # Define properties to query
 $accountPropertiesToQuery = @("id") + $accountPropertiesToCompare | Select-Object -Unique
 #endRegion account
+
+#region manager account
+# Define correlation
+$managerCorrelationField = "employeeId"
+$managerCorrelationValue = $personContext.Manager.ExternalId
+
+# Define properties to query
+$managerAccountPropertiesToQuery = @("id")
+#endRegion manager account
 
 try {
     if ($actionContext.Configuration.correlateOnly -eq $true) {
@@ -326,7 +335,7 @@ try {
                 $actionAccount = "NoChanges"
             }            
 
-            Write-Verbose "Compared current account to mapped properties"
+            Write-Verbose "Compared current account to mapped properties. Result: $actionAccount"
         }
         elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -gt 1) {
             $actionAccount = "MultipleFound"
@@ -431,6 +440,181 @@ try {
         #endregion Process
         #endregion Account
     }
+
+    #region Manager
+    if ($actionContext.Configuration.updatePrimaryManagerOnUpdate -eq $true) {
+        #region Use Manager Reference
+        if (-not[String]::IsNullOrEmpty(($actionContext.References.ManagerAccount))) {
+            $currentMicrosoftEntraIDManagerAccountId = $actionContext.References.ManagerAccount
+        }
+        #endregion Use Manager Reference
+        #region If Manager Reference is not available, correlate to manager
+        else {
+            #region Verify manager correlation configuration and properties
+            $actionMessage = "verifying manager correlation configuration and properties"
+            if (-not[string]::IsNullOrEmpty($managerCorrelationValue)) {
+                #region Get Microsoft Entra ID manager account
+                # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
+                $actionMessage = "querying Microsoft Entra ID manager account where [$($managerCorrelationField)] = [$($managerCorrelationValue)]"
+    
+                $baseUri = "https://graph.microsoft.com/"
+                $getMicrosoftEntraIDManagerAccountSplatParams = @{
+                    Uri         = "$($baseUri)/v1.0/users?`$filter=$managerCorrelationField eq '$managerCorrelationValue'&`$select=$($managerAccountPropertiesToQuery -join ',')"
+                    Headers     = $headers
+                    Method      = "GET"
+                    Verbose     = $false
+                    ErrorAction = "Stop"
+                }
+                $currentMicrosoftEntraIDManagerAccount = $null
+                $currentMicrosoftEntraIDManagerAccount = (Invoke-RestMethod @getMicrosoftEntraIDManagerAccountSplatParams).Value
+    
+                $currentMicrosoftEntraIDManagerAccountId = $currentMicrosoftEntraIDManagerAccount.Id
+    
+                Write-Verbose "Queried Microsoft Entra ID manager account where [$($managerCorrelationField)] = [$($managerCorrelationValue)]. Result: $($currentMicrosoftEntraIDManagerAccount | ConvertTo-Json)"
+                #endregion Get Microsoft Entra ID manager account
+            }
+            #endregion Verify correlation configuration and properties
+        }
+        #endregion If Manager Reference is not available, correlate to manager
+
+        #region Calulate manager action
+        $actionMessage = "calculating manager action"
+
+        if (($currentMicrosoftEntraIDManagerAccountId | Measure-Object).count -eq 1) {
+            #region Get previous manager of account
+            try {
+                # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-list-manager?view=graph-rest-1.0&tabs=http
+                $actionMessage = "querying previous manager of account"
+        
+                $baseUri = "https://graph.microsoft.com/"
+                $getPreviousMicrosoftEntraIDManagerAccountSplatParams = @{
+                    Uri         = "$($baseUri)/v1.0/users/$($outputContext.AccountReference)/manager"
+                    Headers     = $headers
+                    Method      = "GET"
+                    Verbose     = $false
+                    ErrorAction = "Stop"
+                }
+                $previousMicrosoftEntraIDManagerAccount = $null
+                $previousMicrosoftEntraIDManagerAccount = Invoke-RestMethod @getPreviousMicrosoftEntraIDManagerAccountSplatParams
+            
+                $previousMicrosoftEntraIDManagerAccountId = $previousMicrosoftEntraIDManagerAccount.Id
+
+                Write-Verbose "Queried previous manager of account. Result: $($previousMicrosoftEntraIDManagerAccount | ConvertTo-Json)"
+            }
+            catch {
+                Write-Verbose "No previous manager of account found."
+            }
+            #endregion Get previous manager of account
+
+            $actionMessage = "comparing current manager to mapped manager"
+
+            if ($currentMicrosoftEntraIDManagerAccountId -ne $previousMicrosoftEntraIDManagerAccountId) {
+                $actionManager = "Update"
+            }
+            else {
+                $actionManager = "NoChanges"
+            }            
+    
+            Write-Verbose "Compared current manager to mapped manager. Result: $actionManager"
+        }
+        elseif (($currentMicrosoftEntraIDManagerAccountId | Measure-Object).count -gt 1) {
+            $actionManager = "MultipleFound"
+        }
+        elseif (($currentMicrosoftEntraIDManagerAccountId | Measure-Object).count -eq 0) {
+            if ([string]::IsNullOrEmpty($managerCorrelationValue)) {
+                $actionManager = "CorrelationValueEmpty"
+            }
+            else {
+                $actionManager = "NotFound"  
+            }
+        }
+        #endregion Calulate manager action
+    
+        switch ($actionManager) {
+            "Update" {
+                #region Set Manager
+                # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-post-manager?view=graph-rest-1.0&tabs=http
+                $actionMessage = "updating manager for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
+                $baseUri = "https://graph.microsoft.com/"
+    
+                # Update account with all other fields than the required fields
+                $setManagerBody = @{
+                    "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($currentMicrosoftEntraIDManagerAccountId)"
+                }
+    
+                $setManagerSplatParams = @{
+                    Uri         = "$($baseUri)/v1.0/users/$($outputContext.AccountReference)/manager/`$ref"
+                    Headers     = $headers
+                    Method      = "PUT"
+                    Body        = ($setManagerBody | ConvertTo-Json -Depth 10)
+                    Verbose     = $false
+                    ErrorAction = "Stop"
+                }
+    
+                if (-Not($actionContext.DryRun -eq $true)) {
+                    Write-Verbose "SplatParams: $($setManagerSplatParams | ConvertTo-Json)"
+    
+                    $setManager = Invoke-RestMethod @setManagerSplatParams
+    
+                    #region Add Manager AccountReference to Data
+                    $outputContext.Data.manager.id = "$($currentMicrosoftEntraIDManagerAccountId)"
+                    #endregion Add Manager AccountReference to Data
+    
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = "Updated manager with [$($currentMicrosoftEntraIDManagerAccountId)] for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json). Old value: $($previousMicrosoftEntraIDManagerAccountId | ConvertTo-Json). New value: $($currentMicrosoftEntraIDManagerAccountId | ConvertTo-Json)"
+                            IsError = $false
+                        })
+                }
+                else {
+                    Write-Warning "DryRun: Would update manager with [$($currentMicrosoftEntraIDManagerAccountId)] for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json). Old value: $($previousMicrosoftEntraIDManagerAccountId | ConvertTo-Json). New value: $($currentMicrosoftEntraIDManagerAccountId | ConvertTo-Json)"
+                }
+                #endregion Set Manager
+    
+                break
+            }
+    
+            "MultipleFound" {
+                #region Multiple accounts found
+                $actionMessage = "updating manager for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
+            
+                # Throw terminal error
+                throw "Multiple accounts found where [$($managerCorrelationField)] = [$($managerCorrelationValue)]. Please correct this so the persons are unique."
+                #endregion Multiple accounts found
+            
+                break
+            }
+            
+            "NotFound" {
+                #region No account found
+                $actionMessage = "updating manager for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
+    
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = "Skipped updating manager for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json). Reason: No account found where [$($managerCorrelationField)] = [$($managerCorrelationValue)]."
+                        IsError = $false
+                    })
+                #endregion No account found
+            
+                break
+            }
+    
+            "CorrelationValueEmpty" {
+                #region No account found
+                $actionMessage = "updating manager for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
+    
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = "Skipped updating manager for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json). Reason: Manager correlation value for [$managerCorrelationField] is empty."
+                        IsError = $false
+                    })
+                #endregion No account found
+            
+                break
+            }
+        }
+    }
+    #endregion Manager
 }
 catch {
     $ex = $PSItem
