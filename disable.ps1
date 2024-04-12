@@ -326,7 +326,7 @@ try {
                 $actionAccount = "NoChanges"
             }            
 
-            Write-Verbose "Compared current account to mapped properties"
+            Write-Verbose "Compared current account to mapped properties. Result: $actionAccount"
         }
         elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -gt 1) {
             $actionAccount = "MultipleFound"
