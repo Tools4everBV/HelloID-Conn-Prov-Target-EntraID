@@ -399,7 +399,7 @@ try {
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
                         Message = "Skipped updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: No changes."
-                        IsError = $true
+                        IsError = $false
                     })
                 #endregion No changes
 
