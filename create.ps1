@@ -241,9 +241,6 @@ $managerAccountPropertiesToQuery = @("id")
 
 #region guestInvite
 # Define correlation
-$guestInviteCorrelationField = "employeeId"
-$guestInviteCorrelationValue = $personContext.Person.ExternalId
-
 $guestInviteAccount = [PSCustomObject]$actionContext.Data.guestInvite
 # Remove properties with null-values
 $guestInviteAccount.PsObject.Properties | ForEach-Object {
