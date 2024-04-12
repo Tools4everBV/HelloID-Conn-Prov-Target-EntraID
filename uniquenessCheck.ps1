@@ -213,14 +213,17 @@ $fieldsToCheck = [PSCustomObject]@{
     "userPrincipalName" = [PSCustomObject]@{
         accountValue   = $actionContext.Data.userPrincipalName
         keepInSyncWith = @("mail", "mailNickname") # The properties to keep in sync with, if one of these properties isn't unique, this property wil be treated as not unique as well
+        crossCheckOn   = @("userPrincipalName", "mailNickname") # The properties to keep in cross-check on
     }
     "mail"              = [PSCustomObject]@{ # This is the value that is returned to HelloID in NonUniqueFields
-        accountValue   = $actionContext.Data.userPrincipalName
+        accountValue   = $actionContext.Data.mail
         keepInSyncWith = @("userPrincipalName", "mailNickname") # The properties to keep in sync with, if one of these properties isn't unique, this property wil be treated as not unique as well
+        crossCheckOn   = @("userPrincipalName", "mailNickname") # The properties to keep in cross-check on
     }
     "mailNickname"      = [PSCustomObject]@{ # This is the value that is returned to HelloID in NonUniqueFields
-        accountValue   = $actionContext.Data.userPrincipalName
+        accountValue   = $actionContext.Data.mailNickname
         keepInSyncWith = @("userPrincipalName", "mail") # The properties to keep in sync with, if one of these properties isn't unique, this property wil be treated as not unique as well
+        crossCheckOn   = $null # The properties to keep in cross-check on
     }
 }
 #endregion Fields to check
@@ -248,15 +251,20 @@ try {
         }
         #endregion Verify account reference
     }
-
-    foreach ($fieldToCheck in $fieldsToCheck.PsObject.Properties) {
+    foreach ($fieldToCheck in $fieldsToCheck.PsObject.Properties | Where-Object { -not[String]::IsNullOrEmpty($_.Value.accountValue) }) {
         #region Get Microsoft Entra ID account
         # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
         $actionMessage = "querying Microsoft Entra ID account where [$($fieldToCheck.Name)] = [$($fieldToCheck.Value.accountValue)]"
 
         $baseUri = "https://graph.microsoft.com/"
+        $filter = "$($fieldToCheck.Name) eq '$($fieldToCheck.Value.accountValue)'"
+        if (($fieldToCheck.Value.crossCheckOn | Measure-Object).Count -ge 1) {
+            foreach ($fieldToCrossCheckOn in $fieldToCheck.Value.crossCheckOn) {
+                $filter = $filter + " OR $($fieldToCrossCheckOn) eq '$($fieldToCheck.Value.accountValue)'"
+            }
+        }
         $getMicrosoftEntraIDAccountSplatParams = @{
-            Uri         = "$($baseUri)/v1.0/users?`$filter=$($fieldToCheck.Name) eq '$($fieldToCheck.Value.accountValue)'&`$select=id,$($fieldToCheck.Name)"
+            Uri         = "$($baseUri)/v1.0/users?`$filter=$($filter)&`$select=id,$($fieldToCheck.Name)"
             Headers     = $headers
             Method      = "GET"
             Verbose     = $false
@@ -264,7 +272,7 @@ try {
         }
         $currentMicrosoftEntraIDAccount = $null
         $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
-    
+
         Write-Verbose "Queried Microsoft Entra ID account where [$($fieldToCheck.Name)] = [$($fieldToCheck.Value.accountValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)."
         #endregion Get Microsoft Entra ID account
 
@@ -279,8 +287,8 @@ try {
                 Write-Verbose "In use by: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)."
                 [void]$outputContext.NonUniqueFields.Add($fieldToCheck.Name)
                 
-                if ([string]::IsNullOrEmpty($fieldToCheck.Value.keepInSyncWith)) {
-                    foreach ($fieldToKeepInSyncWith in $fieldToCheck.Value.keepInSyncWith) {
+                if (($fieldToCheck.Value.keepInSyncWith | Measure-Object).Count -ge 1) {
+                    foreach ($fieldToKeepInSyncWith in $fieldToCheck.Value.keepInSyncWith | Where-Object { $_ -in $actionContext.Data.PsObject.Properties }) {
                         [void]$outputContext.NonUniqueFields.Add($fieldToKeepInSyncWith)
                     }
                 }
