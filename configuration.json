@@ -43,6 +43,16 @@
     }
   },
   {
+    "key": "inviteAsGuest",
+    "type": "checkbox",
+    "defaultValue": false,
+    "templateOptions": {
+      "label": "Invite as Guest",
+      "description": "When toggled, this connector will create Guest accounts through invitation, allowing users to log in using their invited email addresses",
+      "required": false
+    }
+  },
+  {
     "key": "deleteAccount",
     "type": "checkbox",
     "defaultValue": false,

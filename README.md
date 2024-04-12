@@ -36,8 +36,11 @@
   - [ ] Client Secret.
 
 ## Remarks
-- The dynamic permissions script for Teams is almost the same as the one for Groups. The only difference is an additional filter for Teams-enabled groups. This is due to the fact that a Team is always a M365 group and we can manage the members of that group instead of in Teams itself.
-- Currently only Microsoft 365 and Security groups are supported by the [Microsoft Graph API](https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0). This means we cannot manage Mail-enabled security groups and Distribution groups, These can only be managed using the [Exchange Online connector](https://github.com/Tools4everBV/HelloID-Conn-Prov-Target-ExchangeOnline).
+- The script for dynamically managing permissions in Teams closely resembles that for Groups, with the only distinction being an added filter for Teams-enabled groups. This is because a Team is inherently an M365 group, allowing us to manage its members within the group context rather than within Teams itself.
+- Currently, the [Microsoft Graph API](https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0) exclusively supports Microsoft 365 and Security groups. Consequently, Mail-enabled security groups and Distribution groups cannot be managed via this API. To manage these types of groups, utilize the [Exchange Online connector](https://github.com/Tools4everBV/HelloID-Conn-Prov-Target-ExchangeOnline).
+- This connector provides the functionality to create Guest accounts through invitation, allowing users to log in using their invited email addresses. This feature can be enabled or disabled using the "Invite as Guest" option.
+If direct creation of Microsoft Entra ID Guest accounts (with login names under the tenant domain) is preferred, ensure that the "Invite as Guest" option is not enabled.
+By specifying the userType as 'Guest' in the mapping, Guest accounts with login names under the tenant domain can be effortlessly created.
 
 ## Introduction
 _HelloID-Conn-Prov-Target-Microsoft-Entra-ID_ is a _target_ connector. _Microsoft_ provides a set of REST API's that allow you to programmatically interact with its data. The Microsoft Entra ID connector uses the API endpoints listed in the table below.
