@@ -320,7 +320,11 @@ try {
                     #region Skip delete
                     $actionMessage = "skipping deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
 
-                    Write-Verbose "Skipped deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. Reason: Configured to not delete on revoke of entitlement."
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = "Skipped deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. Reason: Configured to not delete on revoke of entitlement."
+                            IsError = $false
+                        })
                     #endregion Skip delete
     
                     break
@@ -329,8 +333,11 @@ try {
                 "NoExistingData-SkipDelete" {
                     #region No existing data, skipping delete
                     $actionMessage = "skipping deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
-
-                    Write-Verbose "Skipped deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. Reason: Nothing to delete."
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = "Skipped deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. Reason: Nothing to delete."
+                            IsError = $false
+                        })
                     #endregion  No existing data, skipping delete
 
                     break

@@ -241,7 +241,7 @@ try {
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
                 Message = "Skipped updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: Configuration option [correlateOnly] is toggled."
-                IsError = $true
+                IsError = $false
             })
         #region Correlate only
     }
@@ -399,7 +399,7 @@ try {
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
                         Message = "Skipped updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: No changes."
-                        IsError = $true
+                        IsError = $false
                     })
                 #endregion No changes
 
@@ -424,7 +424,7 @@ try {
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
                         Message = "Skipped updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: No account found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
-                        IsError = $true
+                        IsError = $false
                     })
                 #endregion No account found
 

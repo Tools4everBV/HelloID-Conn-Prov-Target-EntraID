@@ -241,7 +241,7 @@ try {
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
                 Message = "Skipped updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: Configuration option [correlateOnly] is toggled."
-                IsError = $true
+                IsError = $false
             })
         #region Correlate only
     }
