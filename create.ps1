@@ -231,26 +231,30 @@ $accountPropertiesToQuery = @("id")
 #endRegion account
 
 #region manager account
-# Define correlation
-$managerCorrelationField = "employeeId"
-$managerCorrelationValue = $personContext.Manager.ExternalId
+if($actionContext.Configuration.setPrimaryManagerOnCreate -eq $true){
+    # Define correlation
+    $managerCorrelationField = "employeeId"
+    $managerCorrelationValue = $personContext.Manager.ExternalId
 
-# Define properties to query
-$managerAccountPropertiesToQuery = @("id")
+    # Define properties to query
+    $managerAccountPropertiesToQuery = @("id")
+}
 #endRegion manager account
 
 #region guestInvite
-# Define correlation
-$guestInviteAccount = [PSCustomObject]$actionContext.Data.guestInvite
-# Remove properties with null-values
-$guestInviteAccount.PsObject.Properties | ForEach-Object {
+if($actionContext.Configuration.inviteAsGuest -eq $true){
+    # Define correlation
+    $guestInviteAccount = [PSCustomObject]$actionContext.Data.guestInvite
     # Remove properties with null-values
-    if ($_.Value -eq $null) {
-        $guestInviteAccount.PsObject.Properties.Remove("$($_.Name)")
+    $guestInviteAccount.PsObject.Properties | ForEach-Object {
+        # Remove properties with null-values
+        if ($_.Value -eq $null) {
+            $guestInviteAccount.PsObject.Properties.Remove("$($_.Name)")
+        }
     }
+    # Convert the properties containing "TRUE" or "FALSE" to boolean
+    $guestInviteAccount = Convert-StringToBoolean $guestInviteAccount
 }
-# Convert the properties containing "TRUE" or "FALSE" to boolean
-$guestInviteAccount = Convert-StringToBoolean $guestInviteAccount
 #endRegion guestInvite
 
 try {
@@ -295,7 +299,7 @@ try {
         }
         $currentMicrosoftEntraIDAccount = $null
         $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
-
+        
         Write-Verbose "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
         #endregion Get Microsoft Entra ID account
     }
@@ -333,7 +337,7 @@ try {
         $actionAccount = "MultipleFound"
     }
     #endregion Calulate action
-
+    write-verbose $($actionAccount) -verbose
     #region Process
     switch ($actionAccount) {
         "Create" {
