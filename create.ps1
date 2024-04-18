@@ -337,7 +337,7 @@ try {
         $actionAccount = "MultipleFound"
     }
     #endregion Calulate action
-    write-verbose $($actionAccount) -verbose
+    
     #region Process
     switch ($actionAccount) {
         "Create" {
