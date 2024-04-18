@@ -213,24 +213,26 @@ function Resolve-MicrosoftGraphAPIErrorMessage {
 $correlationField = "id"
 $correlationValue = $actionContext.References.Account
 
+# Define account object
 $account = [PSCustomObject]$actionContext.Data
 # Remove properties phoneAuthenticationMethod, emailAuthenticationMethod and manager as they are set within seperate actions
 $account = $account | Select-Object -ExcludeProperty phoneAuthenticationMethod, emailAuthenticationMethod, manager
-# Remove properties with null-values
+
+# Define properties to query
+$accountPropertiesToQuery = @("id") + $account.PsObject.Properties.Name | Select-Object -Unique
+
+# Remove properties of account object with null-values
 $account.PsObject.Properties | ForEach-Object {
     # Remove properties with null-values
     if ($_.Value -eq $null) {
         $account.PsObject.Properties.Remove("$($_.Name)")
     }
 }
-# Convert the properties containing "TRUE" or "FALSE" to boolean
+# Convert the properties of account object containing "TRUE" or "FALSE" to boolean 
 $account = Convert-StringToBoolean $account
 
 # Define properties to compare for update
 $accountPropertiesToCompare = $account.PsObject.Properties.Name
-
-# Define properties to query
-$accountPropertiesToQuery = @("id") + $accountPropertiesToCompare | Select-Object -Unique
 #endRegion account
 
 #region manager account
@@ -367,10 +369,16 @@ try {
 
                 $baseUri = "https://graph.microsoft.com/"
 
-                # Update account with all other fields than the required fields
+                # Set output data with current account data
+                $outputContext.Data = $currentMicrosoftEntraIDAccount
+
+                # Update account with updated fields
                 $updateAccountBody = @{}
-                foreach ($accountProperty in $account.PsObject.Properties) {
-                    [void]$updateAccountBody.Add($accountProperty.Name, $accountProperty.Value)
+                foreach ($accountNewProperty in $accountNewProperties) {
+                    [void]$updateAccountBody.Add($accountNewProperty.Name, $accountNewProperty.Value)
+
+                    # Update output data with new account data
+                    $outputContext.Data.$($accountNewProperty.Name) = $accountNewProperty.Value
                 }
 
                 $updateAccountSplatParams = @{
@@ -404,6 +412,8 @@ try {
             "NoChanges" {
                 #region No changes
                 $actionMessage = "skipping updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+
+                $outputContext.Data = $currentMicrosoftEntraIDAccount
 
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
