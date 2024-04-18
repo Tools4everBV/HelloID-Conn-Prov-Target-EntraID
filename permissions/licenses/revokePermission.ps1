@@ -186,7 +186,7 @@ function Resolve-MicrosoftGraphAPIErrorMessage {
 $correlationField = "id"
 $correlationValue = $actionContext.References.Account
 #endregion account
-
+$actionContext.DryRun = $false
 try {
     #region Verify account reference
     $actionMessage = "verifying account reference"
@@ -250,9 +250,7 @@ try {
 
             $revokePermissionBody = @{
                 addLicenses    = $null
-                removeLicenses = @{
-                    skuId = $($actionContext.References.Permission.SkuId)
-                }
+                removeLicenses = @($($actionContext.References.Permission.SkuId))
             }
             
             $baseUri = "https://graph.microsoft.com/"
@@ -302,7 +300,7 @@ try {
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
                     Message = "Skipped revoking license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: No account found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
-                    IsError = $false
+                    IsError = $true
                 })
             #endregion No account found
 
