@@ -221,10 +221,11 @@ function Resolve-MicrosoftGraphAPIErrorMessage {
 #region Get Access Token
 try {
     #region Verify account reference
-    $actionMessage = "verifying account reference"
-    if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
-        throw "The account reference could not be found"
-    }
+    # $actionMessage = "verifying account reference"
+    
+    # if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
+    #     throw "The account reference could not be found"
+    # }
     #endregion Verify account reference
 
     #region Create authorization headers
@@ -242,58 +243,60 @@ try {
     #endregion Create authorization headers
 
     #region Define desired permissions
-    try {
-        $desiredPermissions = @{}
-        if (-Not($actionContext.Operation -eq "revoke")) {
-            # Example: Contract Based Logic:
-            foreach ($contract in $personContext.Person.Contracts) {
-                Write-Information "Contract: $($contract.ExternalId). In condition: $($contract.Context.InConditions)"
-                if ($contract.Context.InConditions -OR ($actionContext.DryRun -eq $true)) {
-                    # Example: department_<departmentname>
-                    $groupName = "department_" + $contract.Department.DisplayName
+    $actionMessage = "calculating desired permission"
 
-                    # Example: title_<titlename>
-                    # $groupName = "title_" + $contract.Title.Name
+    $desiredPermissions = @{}
+    if (-Not($actionContext.Operation -eq "revoke")) {
+        # Example: Contract Based Logic:
+        foreach ($contract in $personContext.Person.Contracts) {
+            $actionMessage = "querying Microsoft Entra ID group for resource: $($resource | ConvertTo-Json)"
 
-                    # Sanitize group name, e.g. replace " - " with "_" or other sanitization actions 
-                    $groupName = Get-SanitizedGroupName -Name $groupName
+            Write-Verbose "Contract: $($contract.ExternalId). In condition: $($contract.Context.InConditions)"
+            if ($contract.Context.InConditions -OR ($actionContext.DryRun -eq $true)) {
+                # Get group to use objectGuid to avoid name change issues
+                $correlationField = "displayName"
 
-                    # Get group to use objectGuid to avoid name change issues
-                    $filter = "displayName+eq+'$($groupName)'"
-                    Write-Verbose "Querying Microsoft Entra ID group that matches filter [$($filter)]"
+                # Example: department_<departmentname>
+                $correlationValue = "department_" + $contract.Department.DisplayName
 
-                    $baseUri = "https://graph.microsoft.com/"
-                    $splatWebRequest = @{
-                        Uri     = "$baseUri/v1.0/groups?`$filter=$($filter)"
-                        Headers = $headers
-                        Method  = "GET"
-                    }
-                    $group = $null
-                    $groupResponse = Invoke-RestMethod @splatWebRequest -Verbose:$false
-                    $group = $groupResponse.Value
+                # Example: title_<titlename>
+                # $correlationValue = "title_" + $contract.Title.Name
+                
+                # Sanitize group name, e.g. replace " - " with "_" or other sanitization actions 
+                $correlationValue = Get-SanitizedGroupName -Name $correlationValue
+
+                $baseUri = "https://graph.microsoft.com/"
+                $getMicrosoftEntraIDGroupSplatParams = @{
+                    Uri         = "$baseUri/v1.0/groups?`$filter=$($correlationField)+eq+'$($correlationValue)'"
+                    Headers     = $headers
+                    Method      = "GET"
+                    Verbose     = $false
+                    ErrorAction = "Stop"
+                }
+                $group = $null
+                
+                $group = (Invoke-RestMethod @getMicrosoftEntraIDGroupSplatParams).Value
     
-                    if ($group.Id.count -eq 0) {
-                        throw "No Group found that matches filter [$($filter)]"
-                    }
-                    elseif ($group.Id.count -gt 1) {
-                        Throw  "Multiple Groups found that matches filter [$($filter)]. Please correct this so the groups are unique."
-                    }
-                    else {
-                        # Add group to desired permissions with the id as key and the displayname as value (use id to avoid issues with name changes and for uniqueness)
-                        $desiredPermissions["$($group.id)"] = $group.displayName
-                    }
+                if ($group.Id.count -eq 0) {
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            Action  = "GrantPermission"
+                            Message = "No Group found where [$($correlationField)] = [$($correlationValue)]"
+                            IsError = $true
+                        })
+                }
+                elseif ($group.Id.count -gt 1) {
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            Action  = "GrantPermission"
+                            Message = "Multiple Groups found where [$($correlationField)] = [$($correlationValue)]. Please correct this so the groups are unique."
+                            IsError = $true
+                        })
+                }
+                else {
+                    # Add group to desired permissions with the id as key and the displayname as value (use id to avoid issues with name changes and for uniqueness)
+                    $desiredPermissions["$($group.id)"] = $group.displayName
                 }
             }
         }
-    }
-    catch {
-        $ex = $PSItem      
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                Action  = "GrantDynamicPermission"
-                Message = "$($ex.Exception.Message)"
-                IsError = $true
-            })
-        throw $_
     }
     #endregion Define desired permissions
     
