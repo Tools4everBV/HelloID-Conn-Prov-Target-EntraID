@@ -378,7 +378,7 @@ try {
                     [void]$updateAccountBody.Add($accountNewProperty.Name, $accountNewProperty.Value)
 
                     # Update output data with new account data
-                    $outputContext.Data.$($accountNewProperty.Name) = $accountNewProperty.Value
+                    $outputContext.Data | Add-Member -MemberType NoteProperty -Name $accountNewProperty.Name -Value $accountNewProperty.Value -Force
                 }
 
                 $updateAccountSplatParams = @{
