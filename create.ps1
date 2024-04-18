@@ -227,7 +227,7 @@ $account.PsObject.Properties | ForEach-Object {
 $account = Convert-StringToBoolean $account
 
 # Define properties to query
-$accountPropertiesToQuery = @("id")
+$accountPropertiesToQuery = @("id") + $account.PsObject.Properties.Name | Select-Object -Unique
 #endRegion account
 
 #region manager account
