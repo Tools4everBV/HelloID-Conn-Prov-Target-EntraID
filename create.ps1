@@ -213,21 +213,23 @@ function Resolve-MicrosoftGraphAPIErrorMessage {
 $correlationField = $actionContext.CorrelationConfiguration.accountField
 $correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
 
+# Define account object
 $account = [PSCustomObject]$actionContext.Data
 # Remove properties phoneAuthenticationMethod, emailAuthenticationMethod and manager as they are set within seperate actions
-$account = $account | Select-Object -ExcludeProperty phoneAuthenticationMethod, emailAuthenticationMethod, manager, guestInvite
-# Remove properties with null-values
+$account = $account | Select-Object -ExcludeProperty phoneAuthenticationMethod, emailAuthenticationMethod, manager
+
+# Define properties to query
+$accountPropertiesToQuery = @("id") + $account.PsObject.Properties.Name | Select-Object -Unique
+
+# Remove properties of account object with null-values
 $account.PsObject.Properties | ForEach-Object {
     # Remove properties with null-values
     if ($_.Value -eq $null) {
         $account.PsObject.Properties.Remove("$($_.Name)")
     }
 }
-# Convert the properties containing "TRUE" or "FALSE" to boolean
+# Convert the properties of account object containing "TRUE" or "FALSE" to boolean 
 $account = Convert-StringToBoolean $account
-
-# Define properties to query
-$accountPropertiesToQuery = @("id") + $account.PsObject.Properties.Name | Select-Object -Unique
 #endRegion account
 
 #region manager account
