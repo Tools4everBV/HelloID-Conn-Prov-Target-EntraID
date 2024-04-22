@@ -15,6 +15,33 @@ $InformationPreference = "Continue"
 $WarningPreference = "Continue"
 
 #region functions
+function Convert-StringToBoolean($obj) {
+    if ($obj -is [PSCustomObject]) {
+        foreach ($property in $obj.PSObject.Properties) {
+            $value = $property.Value
+            if ($value -is [string]) {
+                $lowercaseValue = $value.ToLower()
+                if ($lowercaseValue -eq "true") {
+                    $obj.$($property.Name) = $true
+                }
+                elseif ($lowercaseValue -eq "false") {
+                    $obj.$($property.Name) = $false
+                }
+            }
+            elseif ($value -is [PSCustomObject] -or $value -is [System.Collections.IDictionary]) {
+                $obj.$($property.Name) = Convert-StringToBoolean $value
+            }
+            elseif ($value -is [System.Collections.IList]) {
+                for ($i = 0; $i -lt $value.Count; $i++) {
+                    $value[$i] = Convert-StringToBoolean $value[$i]
+                }
+                $obj.$($property.Name) = $value
+            }
+        }
+    }
+    return $obj
+}
+
 function Resolve-MicrosoftGraphAPIError {
     [CmdletBinding()]
     param (
@@ -139,44 +166,6 @@ function Resolve-HTTPError {
             $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
         }
         Write-Output $httpErrorObj
-    }
-}
-
-function Resolve-MicrosoftGraphAPIErrorMessage {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory,
-            ValueFromPipeline
-        )]
-        [object]$ErrorObject
-    )
-    process {
-        try {
-            $errorObjectConverted = $ErrorObject | ConvertFrom-Json -ErrorAction Stop
-
-            if ($null -ne $errorObjectConverted.error_description) {
-                $errorMessage = $errorObjectConverted.error_description
-            }
-            elseif ($null -ne $errorObjectConverted.error) {
-                if ($null -ne $errorObjectConverted.error.message) {
-                    $errorMessage = $errorObjectConverted.error.message
-                    if ($null -ne $errorObjectConverted.error.code) { 
-                        $errorMessage = $errorMessage + " Error code: $($errorObjectConverted.error.code)"
-                    }
-                }
-                else {
-                    $errorMessage = $errorObjectConverted.error
-                }
-            }
-            else {
-                $errorMessage = $ErrorObject
-            }
-        }
-        catch {
-            $errorMessage = $ErrorObject
-        }
-
-        Write-Output $errorMessage
     }
 }
 #endregion functions

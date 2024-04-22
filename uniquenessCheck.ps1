@@ -168,44 +168,6 @@ function Resolve-HTTPError {
         Write-Output $httpErrorObj
     }
 }
-
-function Resolve-MicrosoftGraphAPIErrorMessage {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory,
-            ValueFromPipeline
-        )]
-        [object]$ErrorObject
-    )
-    process {
-        try {
-            $errorObjectConverted = $ErrorObject | ConvertFrom-Json -ErrorAction Stop
-
-            if ($null -ne $errorObjectConverted.error_description) {
-                $errorMessage = $errorObjectConverted.error_description
-            }
-            elseif ($null -ne $errorObjectConverted.error) {
-                if ($null -ne $errorObjectConverted.error.message) {
-                    $errorMessage = $errorObjectConverted.error.message
-                    if ($null -ne $errorObjectConverted.error.code) { 
-                        $errorMessage = $errorMessage + " Error code: $($errorObjectConverted.error.code)"
-                    }
-                }
-                else {
-                    $errorMessage = $errorObjectConverted.error
-                }
-            }
-            else {
-                $errorMessage = $ErrorObject
-            }
-        }
-        catch {
-            $errorMessage = $ErrorObject
-        }
-
-        Write-Output $errorMessage
-    }
-}
 #endregion functions
 
 #region Fields to check

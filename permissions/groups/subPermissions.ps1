@@ -21,35 +21,31 @@ foreach ($permission in $actionContext.CurrentPermissions) {
 }
 
 #region functions
-function Remove-StringLatinCharacters {
-    PARAM ([string]$String)
-    [Text.Encoding]::ASCII.GetString([Text.Encoding]::GetEncoding("Cyrillic").GetBytes($String))
-}
-
-# The names of security principal objects can contain all Unicode characters except the special LDAP characters defined in RFC 2253.
-# This list of special characters includes: a leading space; a trailing space; and any of the following characters: # , + " \ < > ;
-# A group account cannot consist solely of numbers, periods (.), or spaces. Any leading periods or spaces are cropped.
-# https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc776019(v=ws.10)?redirectedfrom=MSDN
-# https://www.ietf.org/rfc/rfc2253.txt
-function Get-SanitizedGroupName {
-    param(
-        [parameter(Mandatory = $true)][String]$Name
-    )
-    $newName = $Name.trim();
-    $newName = $newName -replace ' - ', '_'
-    $newName = $newName -replace '[`,~,!,#,$,%,^,&,*,(,),+,=,<,>,?,/,'',",;,:,\,|,},{,.]', ''
-    $newName = $newName -replace '\[', '';
-    $newName = $newName -replace ']', '';
-    $newName = $newName -replace ' ', '_';
-    $newName = $newName -replace '\.\.\.\.\.', '.';
-    $newName = $newName -replace '\.\.\.\.', '.';
-    $newName = $newName -replace '\.\.\.', '.';
-    $newName = $newName -replace '\.\.', '.';
-
-    # Remove diacritics
-    $newName = Remove-StringLatinCharacters $newName
-
-    return $newName
+function Convert-StringToBoolean($obj) {
+    if ($obj -is [PSCustomObject]) {
+        foreach ($property in $obj.PSObject.Properties) {
+            $value = $property.Value
+            if ($value -is [string]) {
+                $lowercaseValue = $value.ToLower()
+                if ($lowercaseValue -eq "true") {
+                    $obj.$($property.Name) = $true
+                }
+                elseif ($lowercaseValue -eq "false") {
+                    $obj.$($property.Name) = $false
+                }
+            }
+            elseif ($value -is [PSCustomObject] -or $value -is [System.Collections.IDictionary]) {
+                $obj.$($property.Name) = Convert-StringToBoolean $value
+            }
+            elseif ($value -is [System.Collections.IList]) {
+                for ($i = 0; $i -lt $value.Count; $i++) {
+                    $value[$i] = Convert-StringToBoolean $value[$i]
+                }
+                $obj.$($property.Name) = $value
+            }
+        }
+    }
+    return $obj
 }
 
 function Resolve-MicrosoftGraphAPIError {
@@ -176,44 +172,6 @@ function Resolve-HTTPError {
             $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
         }
         Write-Output $httpErrorObj
-    }
-}
-
-function Resolve-MicrosoftGraphAPIErrorMessage {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory,
-            ValueFromPipeline
-        )]
-        [object]$ErrorObject
-    )
-    process {
-        try {
-            $errorObjectConverted = $ErrorObject | ConvertFrom-Json -ErrorAction Stop
-
-            if ($null -ne $errorObjectConverted.error_description) {
-                $errorMessage = $errorObjectConverted.error_description
-            }
-            elseif ($null -ne $errorObjectConverted.error) {
-                if ($null -ne $errorObjectConverted.error.message) {
-                    $errorMessage = $errorObjectConverted.error.message
-                    if ($null -ne $errorObjectConverted.error.code) { 
-                        $errorMessage = $errorMessage + " Error code: $($errorObjectConverted.error.code)"
-                    }
-                }
-                else {
-                    $errorMessage = $errorObjectConverted.error
-                }
-            }
-            else {
-                $errorMessage = $ErrorObject
-            }
-        }
-        catch {
-            $errorMessage = $ErrorObject
-        }
-
-        Write-Output $errorMessage
     }
 }
 #endregion functions
