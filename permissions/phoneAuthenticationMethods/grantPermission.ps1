@@ -170,12 +170,6 @@ function Resolve-HTTPError {
 }
 #endregion functions
 
-#region account
-# Define correlation
-$correlationField = "id"
-$correlationValue = $actionContext.References.Account
-#endregion account
-
 #region phoneAuthenticationMethod
 # Define phonenumber
 switch ($actionContext.References.Permission.Name) {
@@ -249,225 +243,162 @@ try {
     Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
     #endregion Create authorization headers
 
-    #region Get Microsoft Entra ID account
-    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-    $actionMessage = "querying Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]"
+    #region phoneAuthenticationMethod
+    if ($null -ne $actionContext.References.Account) {
+        #region Get current phoneAuthenticationMethod
+        # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/phoneauthenticationmethod-get?view=graph-rest-1.0&tabs=http
+        $actionMessage = "querying phone authentication methods"
 
-    $baseUri = "https://graph.microsoft.com/"
-    $getMicrosoftEntraIDAccountSplatParams = @{
-        Uri         = "$($baseUri)/v1.0/users?`$filter=$correlationField eq '$correlationValue'&`$select=$($accountPropertiesToQuery -join ',')"
-        Headers     = $headers
-        Method      = "GET"
-        Verbose     = $false
-        ErrorAction = "Stop"
-    }
-    $currentMicrosoftEntraIDAccount = $null
-    $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
+        $baseUri = "https://graph.microsoft.com/"
+        $getCurrentPhoneAuthenticationMethodsSplatParams = @{
+            Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods"
+            Headers     = $headers
+            Method      = "GET"
+            Verbose     = $false
+            ErrorAction = "Stop"
+        }
 
-    Write-Verbose "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
-    #endregion Get Microsoft Entra ID account
+        $currentPhoneAuthenticationMethods = $null
+        $currentPhoneAuthenticationMethods = (Invoke-RestMethod @getCurrentPhoneAuthenticationMethodsSplatParams).Value
 
-    #region Grant permisison
-    #region Calulate action
-    $actionMessage = "calculating action"
-    if (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 1) {
-        $actionPermission = "GrantPermission"         
-    }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -gt 1) {
-        $actionPermission = "MultipleFound"
-    }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 0) {
-        $actionPermission = "NotFound"
-    }
-    #endregion Calulate action
+        $currentPhoneAuthenticationMethod = ($currentPhoneAuthenticationMethods | Where-Object { $_.phoneType -eq "$($actionContext.References.Permission.Name)" }).phoneNumber
 
-    #region Process
-    switch ($actionPermission) {
-        "GrantPermission" {
-            #region phoneAuthenticationMethod
-            if ($null -ne $actionContext.References.Account) {
-                #region Get current phoneAuthenticationMethod
-                # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/phoneauthenticationmethod-get?view=graph-rest-1.0&tabs=http
-                $actionMessage = "querying phone authentication methods for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+        Write-Verbose "Queried phone authentication methods for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Result: $($currentPhoneAuthenticationMethods | ConvertTo-Json)"
+        #endregion Get current phoneAuthenticationMethod
 
+        #region Calulate action
+        $actionMessage = "calculating action"
+        if (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 0) {
+            $actionPhoneAuthenticationMethod = "Create"
+        }
+        elseif (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 1) {
+            # Remove spaces (Microsoft Entra ID formats and returns the phonenumber with a space after the country code)
+            $currentPhoneAuthenticationMethod = $currentPhoneAuthenticationMethod.replace(" ", "")
+            if ($currentPhoneAuthenticationMethod -ne $($phoneNumber)) {
+                if ($actionContext.References.Permission.OnlySetWhenEmpty -eq $true) {
+                    $actionPhoneAuthenticationMethod = "ExistingData-SkipUpdate"
+                }
+                else {
+                    $actionPhoneAuthenticationMethod = "Update"
+                }
+            }
+            else {
+                $actionPhoneAuthenticationMethod = "NoChanges"
+            }
+        }
+        #endregion Calulate action
+
+        #region Process
+        switch ($actionPhoneAuthenticationMethod) {
+            "Create" {
+                #region Create phoneAuthenticationMethod
+                # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/authentication-post-phonemethods?view=graph-rest-1.0&tabs=http
+                $actionMessage = "creating phone authentication method [$($actionContext.References.Permission.Name)] for account"
                 $baseUri = "https://graph.microsoft.com/"
-                $getCurrentPhoneAuthenticationMethodsSplatParams = @{
+
+                $createPhoneAuthenticationMethodBody = @{
+                    "phoneNumber" = $($phoneNumber)
+                    "phoneType"   = $($actionContext.References.Permission.Name)
+                }
+
+                $createPhoneAuthenticationMethodSplatParams = @{
                     Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods"
                     Headers     = $headers
-                    Method      = "GET"
+                    Method      = "POST"
+                    Body        = ($createPhoneAuthenticationMethodBody | ConvertTo-Json -Depth 10)
                     Verbose     = $false
                     ErrorAction = "Stop"
                 }
 
-                $currentPhoneAuthenticationMethods = $null
-                $currentPhoneAuthenticationMethods = (Invoke-RestMethod @getCurrentPhoneAuthenticationMethodsSplatParams).Value
+                if (-Not($actionContext.DryRun -eq $true)) {
+                    Write-Verbose "No current phone authentication method set for [$($actionContext.References.Permission.Name)]. SplatParams: $($createPhoneAuthenticationMethodSplatParams | ConvertTo-Json)"
 
-                $currentPhoneAuthenticationMethod = ($currentPhoneAuthenticationMethods | Where-Object { $_.phoneType -eq "$($actionContext.References.Permission.Name)" }).phoneNumber
+                    $createdPhoneAuthenticationMethod = Invoke-RestMethod @createPhoneAuthenticationMethodSplatParams
 
-                Write-Verbose "Queried phone authentication methods for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Result: $($currentPhoneAuthenticationMethods | ConvertTo-Json)"
-                #endregion Get current phoneAuthenticationMethod
-
-                #region Calulate action
-                $actionMessage = "calculating action"
-                if (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 0) {
-                    $actionPhoneAuthenticationMethod = "Create"
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = "Created phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). New value: [$($phoneNumber)]."
+                            IsError = $false
+                        })
                 }
-                elseif (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 1) {
-                    # Remove spaces (Microsoft Entra ID formats and returns the phonenumber with a space after the country code)
-                    $currentPhoneAuthenticationMethod = $currentPhoneAuthenticationMethod.replace(" ", "")
-                    if ($currentPhoneAuthenticationMethod -ne $($phoneNumber)) {
-                        if ($actionContext.References.Permission.OnlySetWhenEmpty -eq $true) {
-                            $actionPhoneAuthenticationMethod = "ExistingData-SkipUpdate"
-                        }
-                        else {
-                            $actionPhoneAuthenticationMethod = "Update"
-                        }
-                    }
-                    else {
-                        $actionPhoneAuthenticationMethod = "NoChanges"
-                    }
+                else {
+                    Write-Warning "DryRun: Would create phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). New value: [$($phoneNumber)]."
                 }
-                #endregion Calulate action
+                #endregion Create phoneAuthenticationMethod
 
-                #region Process
-                switch ($actionPhoneAuthenticationMethod) {
-                    "Create" {
-                        #region Create phoneAuthenticationMethod
-                        # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/authentication-post-phonemethods?view=graph-rest-1.0&tabs=http
-                        $actionMessage = "creating phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). New value: [$($phoneNumber)]"
-                        $baseUri = "https://graph.microsoft.com/"
-
-                        $createPhoneAuthenticationMethodBody = @{
-                            "phoneNumber" = $($phoneNumber)
-                            "phoneType"   = $($actionContext.References.Permission.Name)
-                        }
-
-                        $createPhoneAuthenticationMethodSplatParams = @{
-                            Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods"
-                            Headers     = $headers
-                            Method      = "POST"
-                            Body        = ($createPhoneAuthenticationMethodBody | ConvertTo-Json -Depth 10)
-                            Verbose     = $false
-                            ErrorAction = "Stop"
-                        }
-
-                        if (-Not($actionContext.DryRun -eq $true)) {
-                            Write-Verbose "No current phone authentication method set for [$($actionContext.References.Permission.Name)]. SplatParams: $($createPhoneAuthenticationMethodSplatParams | ConvertTo-Json)"
-
-                            $createdPhoneAuthenticationMethod = Invoke-RestMethod @createPhoneAuthenticationMethodSplatParams
-
-                            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                    # Action  = "" # Optional
-                                    Message = "Created phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). New value: [$($phoneNumber)]."
-                                    IsError = $false
-                                })
-                        }
-                        else {
-                            Write-Warning "DryRun: Would create phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). New value: [$($phoneNumber)]."
-                        }
-                        #endregion Create phoneAuthenticationMethod
-
-                        break
-                    }
-
-                    "Update" {
-                        #region Update phoneAuthenticationMethod
-                        # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/phoneauthenticationmethod-update?view=graph-rest-1.0&tabs=http
-                        $actionMessage = "updating phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]. New value: [$($phoneNumber)]"
-                        $baseUri = "https://graph.microsoft.com/"
-
-                        $updatePhoneAuthenticationMethodBody = @{
-                            "phoneNumber" = $($phoneNumber)
-                            "phoneType"   = $($actionContext.References.Permission.Name)
-                        }
-
-                        $updatePhoneAuthenticationMethodSplatParams = @{
-                            Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods/$($actionContext.References.Permission.Id)"
-                            Headers     = $headers
-                            Method      = "PATCH"
-                            Body        = ($updatePhoneAuthenticationMethodBody | ConvertTo-Json -Depth 10)
-                            Verbose     = $false
-                            ErrorAction = "Stop"
-                        }
-
-                        if (-Not($actionContext.DryRun -eq $true)) {
-                            Write-Verbose "SplatParams: $($updatePhoneAuthenticationMethodSplatParams | ConvertTo-Json)"
-
-                            $updatedPhoneAuthenticationMethod = Invoke-RestMethod @updatePhoneAuthenticationMethodSplatParams
-
-                            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                    # Action  = "" # Optional
-                                    Message = "Updated phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]. New value: [$($phoneNumber)]."
-                                    IsError = $false
-                                })
-                        }
-                        else {
-                            Write-Warning "DryRun: Would update phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]. New value: [$($phoneNumber)]."
-                        }
-                        #endregion Update phoneAuthenticationMethod
-
-                        break
-                    }
-
-                    "NoChanges" {
-                        #region No changes
-                        $actionMessage = "skipping setting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                # Action  = "" # Optional
-                                Message = "Skipped setting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]. New value: [$($phoneNumber)]. Reason: No changes."
-                                IsError = $false
-                            })
-                        #endregion No changes
-
-                        break
-                    }
-
-                    "ExistingData-SkipUpdate" {
-                        #region Existing data, skipping update
-                        $actionMessage = "skipping setting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                # Action  = "" # Optional
-                                Message = "Skipped setting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]. New value: [$($phoneNumber)]. Reason: Configured to only update when empty and already contains data."
-                                IsError = $false
-                            })
-                        #endregion Existing data, skipping update
-
-                        break
-                    }
-                }
-                #endregion Process
+                break
             }
-            #endregion phoneAuthenticationMethod
 
-            break
+            "Update" {
+                #region Update phoneAuthenticationMethod
+                # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/phoneauthenticationmethod-update?view=graph-rest-1.0&tabs=http
+                $actionMessage = "updating phone authentication method [$($actionContext.References.Permission.Name)] for account"
+                $baseUri = "https://graph.microsoft.com/"
+
+                $updatePhoneAuthenticationMethodBody = @{
+                    "phoneNumber" = $($phoneNumber)
+                    "phoneType"   = $($actionContext.References.Permission.Name)
+                }
+
+                $updatePhoneAuthenticationMethodSplatParams = @{
+                    Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods/$($actionContext.References.Permission.Id)"
+                    Headers     = $headers
+                    Method      = "PATCH"
+                    Body        = ($updatePhoneAuthenticationMethodBody | ConvertTo-Json -Depth 10)
+                    Verbose     = $false
+                    ErrorAction = "Stop"
+                }
+
+                if (-Not($actionContext.DryRun -eq $true)) {
+                    Write-Verbose "SplatParams: $($updatePhoneAuthenticationMethodSplatParams | ConvertTo-Json)"
+
+                    $updatedPhoneAuthenticationMethod = Invoke-RestMethod @updatePhoneAuthenticationMethodSplatParams
+
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = "Updated phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]. New value: [$($phoneNumber)]."
+                            IsError = $false
+                        })
+                }
+                else {
+                    Write-Warning "DryRun: Would update phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]. New value: [$($phoneNumber)]."
+                }
+                #endregion Update phoneAuthenticationMethod
+
+                break
+            }
+
+            "NoChanges" {
+                #region No changes
+                $actionMessage = "skipping setting phone authentication method [$($actionContext.References.Permission.Name)] for account"
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = "Skipped setting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]. New value: [$($phoneNumber)]. Reason: No changes."
+                        IsError = $false
+                    })
+                #endregion No changes
+
+                break
+            }
+
+            "ExistingData-SkipUpdate" {
+                #region Existing data, skipping update
+                $actionMessage = "skipping setting phone authentication method [$($actionContext.References.Permission.Name)] for account"
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = "Skipped setting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]. New value: [$($phoneNumber)]. Reason: Configured to only update when empty and already contains data."
+                        IsError = $false
+                    })
+                #endregion Existing data, skipping update
+
+                break
+            }
         }
-
-        "MultipleFound" {
-            #region Multiple accounts found
-            $actionMessage = "granting setting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-
-            # Throw terminal error
-            throw "Multiple accounts found where [$($correlationField)] = [$($correlationValue)]. Please correct this so the persons are unique."
-            #endregion Multiple accounts found
-
-            break
-        }
-
-        "NotFound" {
-            #region No account found
-            $actionMessage = "granting setting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-        
-            # Throw terminal error
-            throw "No account found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
-            #endregion No account found
-
-            break
-        }
+        #endregion Process
     }
-    #endregion Process
-    #endregion Grant permisison
+    #endregion phoneAuthenticationMethod
 }
 catch {
     $ex = $PSItem

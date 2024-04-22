@@ -267,7 +267,7 @@ try {
         if (-Not $desiredPermissions.ContainsKey($permission.Name) -AND $permission.Name -ne "No permissions defined") {
             #region Revoke permission from account
             # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-delete-members?view=graph-rest-1.0&tabs=http
-            $actionMessage = "revoking group [$($permission.Value)] with id [$($permission.Name)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+            $actionMessage = "revoking group [$($permission.Value)] with id [$($permission.Name)] from account"
 
             $baseUri = "https://graph.microsoft.com/"
             $revokePermissionSplatParams = @{
@@ -310,7 +310,7 @@ try {
         if (-Not $currentPermissions.ContainsKey($permission.Name)) {
             #region Grant permission to account
             # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0&tabs=http
-            $actionMessage = "granting group [$($permission.Value)] with id [$($permission.Name)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+            $actionMessage = "granting group [$($permission.Value)] with id [$($permission.Name)] to account"
 
             $grantPermissionBody = @{
                 "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)"

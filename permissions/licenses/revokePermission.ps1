@@ -170,12 +170,6 @@ function Resolve-HTTPError {
 }
 #endregion functions
 
-#region account
-# Define correlation
-$correlationField = "id"
-$correlationValue = $actionContext.References.Account
-#endregion account
-$actionContext.DryRun = $false
 try {
     #region Verify account reference
     $actionMessage = "verifying account reference"
@@ -198,106 +192,40 @@ try {
     Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
     #endregion Create authorization headers
 
-    #region Get Microsoft Entra ID account
-    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-    $actionMessage = "querying Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]"
+    #region Revoke permission from account
+    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-assignlicense?view=graph-rest-1.0&tabs=http
+    $actionMessage = "revoking license [$($actionContext.References.Permissioskuidn.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account"
 
+    $revokePermissionBody = @{
+        addLicenses    = $null
+        removeLicenses = @($($actionContext.References.Permission.SkuId))
+    }
+            
     $baseUri = "https://graph.microsoft.com/"
-    $getMicrosoftEntraIDAccountSplatParams = @{
-        Uri         = "$($baseUri)/v1.0/users?`$filter=$correlationField eq '$correlationValue'&`$select=$($accountPropertiesToQuery -join ',')"
+    $revokePermissionSplatParams = @{
+        Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/assignLicense"
         Headers     = $headers
-        Method      = "GET"
+        Method      = "POST"
+        Body        = ($revokePermissionBody | ConvertTo-Json -Depth 10)
         Verbose     = $false
         ErrorAction = "Stop"
     }
-    $currentMicrosoftEntraIDAccount = $null
-    $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
 
-    Write-Verbose "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
-    #endregion Get Microsoft Entra ID account
+    if (-Not($actionContext.DryRun -eq $true)) {
+        Write-Verbose "SplatParams: $($revokePermissionSplatParams | ConvertTo-Json)"
 
-    #region Revoke permisison
-    #region Calulate action
-    $actionMessage = "calculating action"
-    if (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 1) {
-        $actionPermission = "RevokePermission"         
+        $revokedPermission = Invoke-RestMethod @revokePermissionSplatParams
+
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                # Action  = "" # Optional
+                Message = "Revoked license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+                IsError = $false
+            })
     }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -gt 1) {
-        $actionPermission = "MultipleFound"
+    else {
+        Write-Warning "DryRun: Would revoke license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
     }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 0) {
-        $actionPermission = "NotFound"
-    }
-    #endregion Calulate action
-
-    #region Process
-    switch ($actionPermission) {
-        "RevokePermission" {
-            #region Revoke permission from account
-            # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-assignlicense?view=graph-rest-1.0&tabs=http
-            $actionMessage = "revoking license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-
-            $revokePermissionBody = @{
-                addLicenses    = $null
-                removeLicenses = @($($actionContext.References.Permission.SkuId))
-            }
-            
-            $baseUri = "https://graph.microsoft.com/"
-            $revokePermissionSplatParams = @{
-                Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/assignLicense"
-                Headers     = $headers
-                Method      = "POST"
-                Body        = ($revokePermissionBody | ConvertTo-Json -Depth 10)
-                Verbose     = $false
-                ErrorAction = "Stop"
-            }
-
-            if (-Not($actionContext.DryRun -eq $true)) {
-                Write-Verbose "SplatParams: $($revokePermissionSplatParams | ConvertTo-Json)"
-
-                $revokedPermission = Invoke-RestMethod @revokePermissionSplatParams
-
-                $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        # Action  = "" # Optional
-                        Message = "Revoked license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
-                        IsError = $false
-                    })
-            }
-            else {
-                Write-Warning "DryRun: Would revoke license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
-            }
-            #endregion Revoke permission from account
-
-            break
-        }
-
-        "MultipleFound" {
-            #region Multiple accounts found
-            $actionMessage = "revoking license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-
-            # Throw terminal error
-            throw "Multiple accounts found where [$($correlationField)] = [$($correlationValue)]. Please correct this so the persons are unique."
-            #endregion Multiple accounts found
-
-            break
-        }
-
-        "NotFound" {
-            #region No account found
-            $actionMessage = "skipping revoking license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-        
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    # Action  = "" # Optional
-                    Message = "Skipped revoking license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: No account found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
-                    IsError = $true
-                })
-            #endregion No account found
-
-            break
-        }
-    }
-    #endregion Process
-    #endregion Revoke permisison
+    #endregion Revoke permission from account
 }
 catch {
     $ex = $PSItem

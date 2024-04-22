@@ -170,12 +170,6 @@ function Resolve-HTTPError {
 }
 #endregion functions
 
-#region account
-# Define correlation
-$correlationField = "id"
-$correlationValue = $actionContext.References.Account
-#endregion account
-
 try {
     #region Verify account reference
     $actionMessage = "verifying account reference"
@@ -198,107 +192,44 @@ try {
     Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
     #endregion Create authorization headers
 
-    #region Get Microsoft Entra ID account
-    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-    $actionMessage = "querying Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]"
+    #region Grant license to account
+    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-assignlicense?view=graph-rest-1.0&tabs=http
+    $actionMessage = "granting license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] to account"
 
+    $grantPermissionBody = @{
+        addLicenses    = @(
+            @{
+                skuId = $($actionContext.References.Permission.SkuId)
+            }
+        )
+        removeLicenses = $null
+    }
+            
     $baseUri = "https://graph.microsoft.com/"
-    $getMicrosoftEntraIDAccountSplatParams = @{
-        Uri         = "$($baseUri)/v1.0/users?`$filter=$correlationField eq '$correlationValue'&`$select=$($accountPropertiesToQuery -join ',')"
+    $grantPermissionSplatParams = @{
+        Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/assignLicense"
         Headers     = $headers
-        Method      = "GET"
+        Method      = "POST"
+        Body        = ($grantPermissionBody | ConvertTo-Json -Depth 10)
         Verbose     = $false
         ErrorAction = "Stop"
     }
-    $currentMicrosoftEntraIDAccount = $null
-    $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
 
-    Write-Verbose "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
-    #endregion Get Microsoft Entra ID account
+    if (-Not($actionContext.DryRun -eq $true)) {
+        Write-Verbose "SplatParams: $($grantPermissionSplatParams | ConvertTo-Json)"
 
-    #region Grant permisison
-    #region Calulate action
-    $actionMessage = "calculating action"
-    if (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 1) {
-        $actionPermission = "GrantPermission"         
+        $grantedPermission = Invoke-RestMethod @grantPermissionSplatParams
+
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                # Action  = "" # Optional
+                Message = "Granted license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+                IsError = $false
+            })
     }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -gt 1) {
-        $actionPermission = "MultipleFound"
+    else {
+        Write-Warning "DryRun: Would grant license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
     }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 0) {
-        $actionPermission = "NotFound"
-    }
-    #endregion Calulate action
-
-    #region Process
-    switch ($actionPermission) {
-        "GrantPermission" {
-            #region Grant license to account
-            # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-assignlicense?view=graph-rest-1.0&tabs=http
-            $actionMessage = "granting license [$($actionContext.References.Permission.SkuPartNumber)] with id [$($actionContext.References.Permission.SkuId)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-
-            $grantPermissionBody = @{
-                addLicenses    = @(
-                    @{
-                        skuId = $($actionContext.References.Permission.SkuId)
-                    }
-                )
-                removeLicenses = $null
-            }
-            
-            $baseUri = "https://graph.microsoft.com/"
-            $grantPermissionSplatParams = @{
-                Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/assignLicense"
-                Headers     = $headers
-                Method      = "POST"
-                Body        = ($grantPermissionBody | ConvertTo-Json -Depth 10)
-                Verbose     = $false
-                ErrorAction = "Stop"
-            }
-
-            if (-Not($actionContext.DryRun -eq $true)) {
-                Write-Verbose "SplatParams: $($grantPermissionSplatParams | ConvertTo-Json)"
-
-                $grantedPermission = Invoke-RestMethod @grantPermissionSplatParams
-
-                $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        # Action  = "" # Optional
-                        Message = "Granted license [$($actionContext.References.Permission.SkuPartNumber)] with id [$($actionContext.References.Permission.SkuId)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
-                        IsError = $false
-                    })
-            }
-            else {
-                Write-Warning "DryRun: Would grant license [$($actionContext.References.Permission.SkuPartNumber)] with id [$($actionContext.References.Permission.SkuId)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
-            }
-            #endregion Grant permission to account
-
-            break
-        }
-
-        "MultipleFound" {
-            #region Multiple accounts found
-            $actionMessage = "granting license [$($actionContext.References.Permission.SkuPartNumber)] with id [$($actionContext.References.Permission.SkuId)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-
-            # Throw terminal error
-            throw "Multiple accounts found where [$($correlationField)] = [$($correlationValue)]. Please correct this so the persons are unique."
-            #endregion Multiple accounts found
-
-            break
-        }
-
-        "NotFound" {
-            #region No account found
-            $actionMessage = "granting license [$($actionContext.References.Permission.SkuPartNumber)] with id [$($actionContext.References.Permission.SkuId)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-        
-            # Throw terminal error
-            throw "No account found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
-            #endregion No account found
-
-            break
-        }
-    }
-    #endregion Process
-    #endregion Grant permisison
+    #endregion Grant license to account
 }
 catch {
     $ex = $PSItem

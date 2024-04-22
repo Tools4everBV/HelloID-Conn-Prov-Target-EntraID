@@ -170,12 +170,6 @@ function Resolve-HTTPError {
 }
 #endregion functions
 
-#region account
-# Define correlation
-$correlationField = "id"
-$correlationValue = $actionContext.References.Account
-#endregion account
-
 try {
     #region Verify account reference
     $actionMessage = "verifying account reference"
@@ -198,173 +192,107 @@ try {
     Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
     #endregion Create authorization headers
 
-    #region Get Microsoft Entra ID account
-    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-    $actionMessage = "querying Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]"
+    #region emailAuthenticationMethod
+    #region Get current emailAuthenticationMethod
+    # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/emailauthenticationmethod-get?view=graph-rest-1.0&tabs=http
+    $actionMessage = "querying email authentication methods for account"
 
     $baseUri = "https://graph.microsoft.com/"
-    $getMicrosoftEntraIDAccountSplatParams = @{
-        Uri         = "$($baseUri)/v1.0/users?`$filter=$correlationField eq '$correlationValue'&`$select=$($accountPropertiesToQuery -join ',')"
+    $getCurrentEmailAuthenticationMethodsSplatParams = @{
+        Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods"
         Headers     = $headers
         Method      = "GET"
         Verbose     = $false
         ErrorAction = "Stop"
     }
-    $currentMicrosoftEntraIDAccount = $null
-    $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
 
-    Write-Verbose "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
-    #endregion Get Microsoft Entra ID account
+    $currentEmailAuthenticationMethods = $null
+    $currentEmailAuthenticationMethods = (Invoke-RestMethod @getCurrentEmailAuthenticationMethodsSplatParams).Value
 
-    #region Revoke permisison
+    $currentEmailAuthenticationMethod = ($currentEmailAuthenticationMethods | Where-Object { $_.id -eq "$($actionContext.References.Permission.Id)" }).emailAddress
+
+    Write-Verbose "Queried email authentication methods for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Result: $($currentEmailAuthenticationMethods | ConvertTo-Json)"
+    #endregion Get current emailAuthenticationMethod
+
     #region Calulate action
     $actionMessage = "calculating action"
-    if (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 1) {
-        $actionPermission = "RevokePermission"         
+    if (($currentEmailAuthenticationMethod | Measure-Object).count -eq 1) {
+        if ($actionContext.Configuration."$($actionContext.References.Permission.RemoveWhenRevokingEntitlement)" -eq $false) {
+            $actionEmailAuthenticationMethod = "SkipDelete"
+        }
+        else {
+            $actionEmailAuthenticationMethod = "Delete"
+        }
     }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -gt 1) {
-        $actionPermission = "MultipleFound"
-    }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 0) {
-        $actionPermission = "NotFound"
+    elseif (($currentEmailAuthenticationMethod | Measure-Object).count -eq 0) {
+        $actionEmailAuthenticationMethod = "NoExistingData-SkipDelete"
     }
     #endregion Calulate action
 
     #region Process
-    switch ($actionPermission) {
-        "RevokePermission" {
-            #region emailAuthenticationMethod
-            #region Get current emailAuthenticationMethod
-            # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/emailauthenticationmethod-get?view=graph-rest-1.0&tabs=http
-            $actionMessage = "querying email authentication methods for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-
+    switch ($actionEmailAuthenticationMethod) {
+        "Delete" {
+            #region Delete emailAuthenticationMethod
+            # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/emailauthenticationmethod-delete?view=graph-rest-1.0&tabs=http
+            $actionMessage = "deleting email authentication method [$($actionContext.References.Permission.Name)] for account"
             $baseUri = "https://graph.microsoft.com/"
-            $getCurrentEmailAuthenticationMethodsSplatParams = @{
-                Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods"
+                    
+            $deleteEmailAuthenticationMethodSplatParams = @{
+                Uri         = "$baseUri/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods/$($actionContext.References.Permission.Id)"
                 Headers     = $headers
-                Method      = "GET"
+                Method      = "DELETE"
                 Verbose     = $false
                 ErrorAction = "Stop"
             }
 
-            $currentEmailAuthenticationMethods = $null
-            $currentEmailAuthenticationMethods = (Invoke-RestMethod @getCurrentEmailAuthenticationMethodsSplatParams).Value
+            if (-Not($actionContext.DryRun -eq $true)) {
+                Write-Verbose "SplatParams: $($deleteEmailAuthenticationMethodSplatParams | ConvertTo-Json)"
 
-            $currentEmailAuthenticationMethod = ($currentEmailAuthenticationMethods | Where-Object { $_.id -eq "$($actionContext.References.Permission.Id)" }).emailAddress
+                $deletedEmailAuthenticationMethod = Invoke-RestMethod @deleteEmailAuthenticationMethodSplatParams
 
-            Write-Verbose "Queried email authentication methods for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Result: $($currentEmailAuthenticationMethods | ConvertTo-Json)"
-            #endregion Get current emailAuthenticationMethod
-
-            #region Calulate action
-            $actionMessage = "calculating action"
-            if (($currentEmailAuthenticationMethod | Measure-Object).count -eq 1) {
-                if ($actionContext.Configuration."$($actionContext.References.Permission.RemoveWhenRevokingEntitlement)" -eq $false) {
-                    $actionEmailAuthenticationMethod = "SkipDelete"
-                }
-                else {
-                    $actionEmailAuthenticationMethod = "Delete"
-                }
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = "Deleted email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]."
+                        IsError = $false
+                    })
             }
-            elseif (($currentEmailAuthenticationMethod | Measure-Object).count -eq 0) {
-                $actionEmailAuthenticationMethod = "NoExistingData-SkipDelete"
+            else {
+                Write-Warning "DryRun: Would delete email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]."
             }
-            #endregion Calulate action
-
-            #region Process
-            switch ($actionEmailAuthenticationMethod) {
-                "Delete" {
-                    #region Delete emailAuthenticationMethod
-                    # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/emailauthenticationmethod-delete?view=graph-rest-1.0&tabs=http
-                    $actionMessage = "deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]"
-                    $baseUri = "https://graph.microsoft.com/"
-                    
-                    $deleteEmailAuthenticationMethodSplatParams = @{
-                        Uri         = "$baseUri/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods/$($actionContext.References.Permission.Id)"
-                        Headers     = $headers
-                        Method      = "DELETE"
-                        Verbose     = $false
-                        ErrorAction = "Stop"
-                    }
-
-                    if (-Not($actionContext.DryRun -eq $true)) {
-                        Write-Verbose "SplatParams: $($deleteEmailAuthenticationMethodSplatParams | ConvertTo-Json)"
-
-                        $deletedEmailAuthenticationMethod = Invoke-RestMethod @deleteEmailAuthenticationMethodSplatParams
-
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                # Action  = "" # Optional
-                                Message = "Deleted email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]."
-                                IsError = $false
-                            })
-                    }
-                    else {
-                        Write-Warning "DryRun: Would delete email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]."
-                    }
-                    #endregion Delete emailAuthenticationMethod
-
-                    break
-                }
-
-                "SkipDelete" {
-                    #region Skip delete
-                    $actionMessage = "skipping deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
-
-                    $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            # Action  = "" # Optional
-                            Message = "Skipped deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. Reason: Configured to not delete on revoke of entitlement."
-                            IsError = $false
-                        })
-                    #endregion Skip delete
-    
-                    break
-                }
-
-                "NoExistingData-SkipDelete" {
-                    #region No existing data, skipping delete
-                    $actionMessage = "skipping deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
-                    $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            # Action  = "" # Optional
-                            Message = "Skipped deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. Reason: Nothing to delete."
-                            IsError = $false
-                        })
-                    #endregion  No existing data, skipping delete
-
-                    break
-                }
-            }
-            #endregion Process
-            #endregion emailAuthenticationMethod
+            #endregion Delete emailAuthenticationMethod
 
             break
         }
 
-        "MultipleFound" {
-            #region Multiple accounts found
-            $actionMessage = "deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+        "SkipDelete" {
+            #region Skip delete
+            $actionMessage = "skipping deleting email authentication method [$($actionContext.References.Permission.Name)] for account"
 
-            # Throw terminal error
-            throw "Multiple accounts found where [$($correlationField)] = [$($correlationValue)]. Please correct this so the persons are unique."
-            #endregion Multiple accounts found
-
-            break
-        }
-
-        "NotFound" {
-            #region No account found
-            $actionMessage = "skipping deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-        
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
-                    Message = "Skipped deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: No account found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
-                    IsError = $true
+                    Message = "Skipped deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. Reason: Configured to not delete on revoke of entitlement."
+                    IsError = $false
                 })
-            #endregion No account found
+            #endregion Skip delete
+    
+            break
+        }
+
+        "NoExistingData-SkipDelete" {
+            #region No existing data, skipping delete
+            $actionMessage = "skipping deleting email authentication method [$($actionContext.References.Permission.Name)] for account"
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = "Skipped deleting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. Reason: Nothing to delete."
+                    IsError = $false
+                })
+            #endregion  No existing data, skipping delete
 
             break
         }
     }
     #endregion Process
-    #endregion Revoke permisison
+    #endregion emailAuthenticationMethod
 }
 catch {
     $ex = $PSItem

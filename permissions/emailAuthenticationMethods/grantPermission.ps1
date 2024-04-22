@@ -170,12 +170,6 @@ function Resolve-HTTPError {
 }
 #endregion functions
 
-#region account
-# Define correlation
-$correlationField = "id"
-$correlationValue = $actionContext.References.Account
-#endregion account
-
 #region emailAuthenticationMethod
 # Define email
 $email = $personContext.Person.Contact.Personal.Email
@@ -207,223 +201,156 @@ try {
     Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
     #endregion Create authorization headers
 
-    #region Get Microsoft Entra ID account
-    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-    $actionMessage = "querying Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]"
+    #region Get current emailAuthenticationMethod
+    # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/emailauthenticationmethod-get?view=graph-rest-1.0&tabs=http
+    $actionMessage = "querying email authentication methods for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
 
     $baseUri = "https://graph.microsoft.com/"
-    $getMicrosoftEntraIDAccountSplatParams = @{
-        Uri         = "$($baseUri)/v1.0/users?`$filter=$correlationField eq '$correlationValue'&`$select=$($accountPropertiesToQuery -join ',')"
+    $getCurrentEmailAuthenticationMethodsSplatParams = @{
+        Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods"
         Headers     = $headers
         Method      = "GET"
         Verbose     = $false
         ErrorAction = "Stop"
     }
-    $currentMicrosoftEntraIDAccount = $null
-    $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
 
-    Write-Verbose "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
-    #endregion Get Microsoft Entra ID account
+    $currentEmailAuthenticationMethods = $null
+    $currentEmailAuthenticationMethods = (Invoke-RestMethod @getCurrentEmailAuthenticationMethodsSplatParams).Value
 
-    #region Grant permisison
+    $currentEmailAuthenticationMethod = ($currentEmailAuthenticationMethods | Where-Object { $_.id -eq "$($actionContext.References.Permission.Id)" }).emailAddress
+
+    Write-Verbose "Queried email authentication methods for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Result: $($currentEmailAuthenticationMethods | ConvertTo-Json)"
+    #endregion Get current emailAuthenticationMethod
+
     #region Calulate action
     $actionMessage = "calculating action"
-    if (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 1) {
-        $actionPermission = "GrantPermission"         
+    if (($currentEmailAuthenticationMethod | Measure-Object).count -eq 0) {
+        $actionEmailAuthenticationMethod = "Create"
     }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -gt 1) {
-        $actionPermission = "MultipleFound"
-    }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 0) {
-        $actionPermission = "NotFound"
+    elseif (($currentEmailAuthenticationMethod | Measure-Object).count -eq 1) {
+        # Remove spaces
+        $currentEmailAuthenticationMethod = $currentEmailAuthenticationMethod.replace(" ", "")
+        if ($currentEmailAuthenticationMethod -ne $($email)) {
+            if ($actionContext.References.Permission.OnlySetWhenEmpty -eq $true) {
+                $actionEmailAuthenticationMethod = "ExistingData-SkipUpdate"
+            }
+            else {
+                $actionEmailAuthenticationMethod = "Update"
+            }
+        }
+        else {
+            $actionEmailAuthenticationMethod = "NoChanges"
+        }
     }
     #endregion Calulate action
 
     #region Process
-    switch ($actionPermission) {
-        "GrantPermission" {
-            #region emailAuthenticationMethod
-            if ($null -ne $actionContext.References.Account) {
-                #region Get current emailAuthenticationMethod
-                # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/emailauthenticationmethod-get?view=graph-rest-1.0&tabs=http
-                $actionMessage = "querying email authentication methods for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+    switch ($actionEmailAuthenticationMethod) {
+        "Create" {
+            #region Create EmailAuthenticationMethod
+            # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/authentication-post-emailmethods?view=graph-rest-1.0&tabs=http
+            $actionMessage = "creating email authentication method [$($actionContext.References.Permission.Name)] for account"
+            $baseUri = "https://graph.microsoft.com/"
 
-                $baseUri = "https://graph.microsoft.com/"
-                $getCurrentEmailAuthenticationMethodsSplatParams = @{
-                    Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods"
-                    Headers     = $headers
-                    Method      = "GET"
-                    Verbose     = $false
-                    ErrorAction = "Stop"
-                }
-
-                $currentEmailAuthenticationMethods = $null
-                $currentEmailAuthenticationMethods = (Invoke-RestMethod @getCurrentEmailAuthenticationMethodsSplatParams).Value
-
-                $currentEmailAuthenticationMethod = ($currentEmailAuthenticationMethods | Where-Object { $_.id -eq "$($actionContext.References.Permission.Id)" }).emailAddress
-
-                Write-Verbose "Queried email authentication methods for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Result: $($currentEmailAuthenticationMethods | ConvertTo-Json)"
-                #endregion Get current emailAuthenticationMethod
-
-                #region Calulate action
-                $actionMessage = "calculating action"
-                if (($currentEmailAuthenticationMethod | Measure-Object).count -eq 0) {
-                    $actionEmailAuthenticationMethod = "Create"
-                }
-                elseif (($currentEmailAuthenticationMethod | Measure-Object).count -eq 1) {
-                    # Remove spaces
-                    $currentEmailAuthenticationMethod = $currentEmailAuthenticationMethod.replace(" ", "")
-                    if ($currentEmailAuthenticationMethod -ne $($email)) {
-                        if ($actionContext.References.Permission.OnlySetWhenEmpty -eq $true) {
-                            $actionEmailAuthenticationMethod = "ExistingData-SkipUpdate"
-                        }
-                        else {
-                            $actionEmailAuthenticationMethod = "Update"
-                        }
-                    }
-                    else {
-                        $actionEmailAuthenticationMethod = "NoChanges"
-                    }
-                }
-                #endregion Calulate action
-
-                #region Process
-                switch ($actionEmailAuthenticationMethod) {
-                    "Create" {
-                        #region Create EmailAuthenticationMethod
-                        # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/authentication-post-emailmethods?view=graph-rest-1.0&tabs=http
-                        $actionMessage = "creating email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). New value: [$($email)]"
-                        $baseUri = "https://graph.microsoft.com/"
-
-                        $createEmailAuthenticationMethodBody = @{
-                            "emailAddress" = $($email)
-                        }
-
-                        $createEmailAuthenticationMethodSplatParams = @{
-                            Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods"
-                            Headers     = $headers
-                            Method      = "POST"
-                            Body        = ($createEmailAuthenticationMethodBody | ConvertTo-Json -Depth 10)
-                            Verbose     = $false
-                            ErrorAction = "Stop"
-                        }
-
-                        if (-Not($actionContext.DryRun -eq $true)) {
-                            Write-Verbose "No current email authentication method set for [$($actionContext.References.Permission.Name)]. SplatParams: $($createEmailAuthenticationMethodSplatParams | ConvertTo-Json)"
-
-                            $createdEmailAuthenticationMethod = Invoke-RestMethod @createEmailAuthenticationMethodSplatParams
-
-                            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                    # Action  = "" # Optional
-                                    Message = "Created email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). New value: [$($email)]."
-                                    IsError = $false
-                                })
-                        }
-                        else {
-                            Write-Warning "DryRun: Would create email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). New value: [$($email)]."
-                        }
-                        #endregion Create EmailAuthenticationMethod
-
-                        break
-                    }
-
-                    "Update" {
-                        #region Update EmailAuthenticationMethod
-                        # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/emailauthenticationmethod-update?view=graph-rest-1.0&tabs=http
-                        $actionMessage = "updating email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. New value: [$($email)]"
-                        $baseUri = "https://graph.microsoft.com/"
-
-                        $updateEmailAuthenticationMethodBody = @{
-                            "emailAddress" = $($email)
-                        }
-
-                        $updateEmailAuthenticationMethodSplatParams = @{
-                            Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods/$($actionContext.References.Permission.Id)"
-                            Headers     = $headers
-                            Method      = "PATCH"
-                            Body        = ($updateEmailAuthenticationMethodBody | ConvertTo-Json -Depth 10)
-                            Verbose     = $false
-                            ErrorAction = "Stop"
-                        }
-
-                        if (-Not($actionContext.DryRun -eq $true)) {
-                            Write-Verbose "SplatParams: $($updateEmailAuthenticationMethodSplatParams | ConvertTo-Json)"
-
-                            $updatedEmailAuthenticationMethod = Invoke-RestMethod @updateEmailAuthenticationMethodSplatParams
-
-                            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                    # Action  = "" # Optional
-                                    Message = "Updated email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. New value: [$($email)]."
-                                    IsError = $false
-                                })
-                        }
-                        else {
-                            Write-Warning "DryRun: Would update email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. New value: [$($email)]."
-                        }
-                        #endregion Update EmailAuthenticationMethod
-
-                        break
-                    }
-
-                    "NoChanges" {
-                        #region No changes
-                        $actionMessage = "skipping setting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                # Action  = "" # Optional
-                                Message = "Skipped setting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. New value: [$($email)]. Reason: No changes."
-                                IsError = $false
-                            })
-                        #endregion No changes
-
-                        break
-                    }
-
-                    "ExistingData-SkipUpdate" {
-                        #region Existing data, skipping update
-                        $actionMessage = "skipping setting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                # Action  = "" # Optional
-                                Message = "Skipped setting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. New value: [$($email)]. Reason: Configured to only update when empty and already contains data."
-                                IsError = $false
-                            })
-                        #endregion Existing data, skipping update
-
-                        break
-                    }
-                }
-                #endregion Process
+            $createEmailAuthenticationMethodBody = @{
+                "emailAddress" = $($email)
             }
-            #endregion EmailAuthenticationMethod
+
+            $createEmailAuthenticationMethodSplatParams = @{
+                Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods"
+                Headers     = $headers
+                Method      = "POST"
+                Body        = ($createEmailAuthenticationMethodBody | ConvertTo-Json -Depth 10)
+                Verbose     = $false
+                ErrorAction = "Stop"
+            }
+
+            if (-Not($actionContext.DryRun -eq $true)) {
+                Write-Verbose "No current email authentication method set for [$($actionContext.References.Permission.Name)]. SplatParams: $($createEmailAuthenticationMethodSplatParams | ConvertTo-Json)"
+
+                $createdEmailAuthenticationMethod = Invoke-RestMethod @createEmailAuthenticationMethodSplatParams
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = "Created email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). New value: [$($email)]."
+                        IsError = $false
+                    })
+            }
+            else {
+                Write-Warning "DryRun: Would create email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). New value: [$($email)]."
+            }
+            #endregion Create EmailAuthenticationMethod
 
             break
         }
 
-        "MultipleFound" {
-            #region Multiple accounts found
-            $actionMessage = "granting setting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+        "Update" {
+            #region Update EmailAuthenticationMethod
+            # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/emailauthenticationmethod-update?view=graph-rest-1.0&tabs=http
+            $actionMessage = "updating email authentication method [$($actionContext.References.Permission.Name)] for account"
+            $baseUri = "https://graph.microsoft.com/"
 
-            # Throw terminal error
-            throw "Multiple accounts found where [$($correlationField)] = [$($correlationValue)]. Please correct this so the persons are unique."
-            #endregion Multiple accounts found
+            $updateEmailAuthenticationMethodBody = @{
+                "emailAddress" = $($email)
+            }
+
+            $updateEmailAuthenticationMethodSplatParams = @{
+                Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods/$($actionContext.References.Permission.Id)"
+                Headers     = $headers
+                Method      = "PATCH"
+                Body        = ($updateEmailAuthenticationMethodBody | ConvertTo-Json -Depth 10)
+                Verbose     = $false
+                ErrorAction = "Stop"
+            }
+
+            if (-Not($actionContext.DryRun -eq $true)) {
+                Write-Verbose "SplatParams: $($updateEmailAuthenticationMethodSplatParams | ConvertTo-Json)"
+
+                $updatedEmailAuthenticationMethod = Invoke-RestMethod @updateEmailAuthenticationMethodSplatParams
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = "Updated email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. New value: [$($email)]."
+                        IsError = $false
+                    })
+            }
+            else {
+                Write-Warning "DryRun: Would update email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. New value: [$($email)]."
+            }
+            #endregion Update EmailAuthenticationMethod
 
             break
         }
 
-        "NotFound" {
-            #region No account found
-            $actionMessage = "granting setting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-        
-            # Throw terminal error
-            throw "No account found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
-            #endregion No account found
+        "NoChanges" {
+            #region No changes
+            $actionMessage = "skipping setting email authentication method [$($actionContext.References.Permission.Name)] for account"
+
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = "Skipped setting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. New value: [$($email)]. Reason: No changes."
+                    IsError = $false
+                })
+            #endregion No changes
+
+            break
+        }
+
+        "ExistingData-SkipUpdate" {
+            #region Existing data, skipping update
+            $actionMessage = "skipping setting email authentication method [$($actionContext.References.Permission.Name)] for account"
+
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = "Skipped setting email authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentEmailAuthenticationMethod)]. New value: [$($email)]. Reason: Configured to only update when empty and already contains data."
+                    IsError = $false
+                })
+            #endregion Existing data, skipping update
 
             break
         }
     }
     #endregion Process
-    #endregion Grant permisison
 }
 catch {
     $ex = $PSItem
