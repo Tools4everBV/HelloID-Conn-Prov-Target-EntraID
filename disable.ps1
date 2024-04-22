@@ -213,31 +213,32 @@ function Resolve-MicrosoftGraphAPIErrorMessage {
 $correlationField = "id"
 $correlationValue = $actionContext.References.Account
 
+# Define account object
 $account = [PSCustomObject]$actionContext.Data
-# Remove properties phoneAuthenticationMethod and emailAuthenticationMethod as they are set within seperate actions
-$account = $account | Select-Object -ExcludeProperty phoneAuthenticationMethod, emailAuthenticationMethod
-# Remove properties with null-values
+# Remove properties phoneAuthenticationMethod, emailAuthenticationMethod and manager as they are set within seperate actions
+$account = $account | Select-Object -ExcludeProperty phoneAuthenticationMethod, emailAuthenticationMethod, manager
+
+# Define properties to query
+$accountPropertiesToQuery = @("id") + $account.PsObject.Properties.Name | Select-Object -Unique
+
+# Remove properties of account object with null-values
 $account.PsObject.Properties | ForEach-Object {
     # Remove properties with null-values
     if ($_.Value -eq $null) {
         $account.PsObject.Properties.Remove("$($_.Name)")
     }
 }
-# Convert the properties containing "TRUE" or "FALSE" to boolean
+# Convert the properties of account object containing "TRUE" or "FALSE" to boolean 
 $account = Convert-StringToBoolean $account
 
 # Define properties to compare for update
 $accountPropertiesToCompare = $account.PsObject.Properties.Name
-
-# Define properties to query
-$accountPropertiesToQuery = @("id") + $accountPropertiesToCompare | Select-Object -Unique
 #endRegion account
 
 try {
     if ($actionContext.Configuration.correlateOnly -eq $true) {
         #region Correlate only
-        $actionMessage = "skipping updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-        
+        $actionMessage = "skipping updating account"
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
                 Message = "Skipped updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: Configuration option [correlateOnly] is toggled."
@@ -269,7 +270,7 @@ try {
 
         #region Get Microsoft Entra ID account
         # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-        $actionMessage = "querying Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]"
+        $actionMessage = "querying Microsoft Entra ID account"
 
         $baseUri = "https://graph.microsoft.com/"
         $getMicrosoftEntraIDAccountSplatParams = @{
@@ -341,7 +342,7 @@ try {
             "Update" {
                 #region Update account
                 # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0&tabs=http
-                $actionMessage = "updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+                $actionMessage = "updating account"
                 # Create custom object with old and new values (for logging)
                 $accountChangedPropertiesObject = [PSCustomObject]@{
                     OldValues = @{}
@@ -358,10 +359,16 @@ try {
 
                 $baseUri = "https://graph.microsoft.com/"
 
-                # Update account with all other fields than the required fields
+                # Set output data with current account data
+                $outputContext.Data = $currentMicrosoftEntraIDAccount
+
+                # Update account with updated fields
                 $updateAccountBody = @{}
-                foreach ($accountProperty in $account.PsObject.Properties) {
-                    [void]$updateAccountBody.Add($accountProperty.Name, $accountProperty.Value)
+                foreach ($accountNewProperty in $accountNewProperties) {
+                    [void]$updateAccountBody.Add($accountNewProperty.Name, $accountNewProperty.Value)
+
+                    # Update output data with new account data
+                    $outputContext.Data | Add-Member -MemberType NoteProperty -Name $accountNewProperty.Name -Value $accountNewProperty.Value -Force
                 }
 
                 $updateAccountSplatParams = @{
@@ -394,7 +401,9 @@ try {
 
             "NoChanges" {
                 #region No changes
-                $actionMessage = "skipping updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+                $actionMessage = "skipping updating account"
+
+                $outputContext.Data = $currentMicrosoftEntraIDAccount
 
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
@@ -408,7 +417,7 @@ try {
 
             "MultipleFound" {
                 #region Multiple accounts found
-                $actionMessage = "updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+                $actionMessage = "updating account"
 
                 # Throw terminal error
                 throw "Multiple accounts found where [$($correlationField)] = [$($correlationValue)]. Please correct this so the persons are unique."
@@ -419,12 +428,12 @@ try {
 
             "NotFound" {
                 #region No account found
-                $actionMessage = "skipping updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-
+                $actionMessage = "skipping updating account"
+        
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
                         Message = "Skipped updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: No account found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
-                        IsError = $false
+                        IsError = $true
                     })
                 #endregion No account found
 
