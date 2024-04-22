@@ -289,7 +289,7 @@ try {
 
         #region Get Microsoft Entra ID account
         # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-        $actionMessage = "querying Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]"
+        $actionMessage = "querying Microsoft Entra ID account"
 
         $baseUri = "https://graph.microsoft.com/"
         $getMicrosoftEntraIDAccountSplatParams = @{
@@ -434,7 +434,7 @@ try {
 
             #region Update account
             # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0&tabs=http
-            $actionMessage = "updating created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
+            $actionMessage = "updating created account"
             $baseUri = "https://graph.microsoft.com/"
 
             # Update account with all other fields than the required fields
@@ -480,9 +480,9 @@ try {
                     #region Verify manager correlation configuration and properties
                     $actionMessage = "verifying manager correlation configuration and properties"
                     if (-not[string]::IsNullOrEmpty($managerCorrelationValue)) {
-                        #region Get Microsoft Entra ID manager account
+                        #region Get manager Microsoft Entra ID account
                         # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-                        $actionMessage = "querying Microsoft Entra ID manager account where [$($managerCorrelationField)] = [$($managerCorrelationValue)]"
+                        $actionMessage = "querying manager Microsoft Entra ID account"
 
                         $baseUri = "https://graph.microsoft.com/"
                         $getMicrosoftEntraIDManagerAccountSplatParams = @{
@@ -497,8 +497,8 @@ try {
 
                         $currentMicrosoftEntraIDManagerAccountId = $currentMicrosoftEntraIDManagerAccount.Id
 
-                        Write-Verbose "Queried Microsoft Entra ID manager account where [$($managerCorrelationField)] = [$($managerCorrelationValue)]. Result: $($currentMicrosoftEntraIDManagerAccount | ConvertTo-Json)"
-                        #endregion Get Microsoft Entra ID manager account
+                        Write-Verbose "Queried manager Microsoft Entra ID account where [$($managerCorrelationField)] = [$($managerCorrelationValue)]. Result: $($currentMicrosoftEntraIDManagerAccount | ConvertTo-Json)"
+                        #endregion Get manager Microsoft Entra ID account
                     }
                     #endregion Verify correlation configuration and properties
                 }
@@ -555,7 +555,7 @@ try {
                     "Set" {
                         #region Set Manager
                         # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-post-manager?view=graph-rest-1.0&tabs=http
-                        $actionMessage = "setting manager for created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
+                        $actionMessage = "setting manager for created account"
                         $baseUri = "https://graph.microsoft.com/"
 
                         # Update account with all other fields than the required fields
@@ -597,7 +597,7 @@ try {
 
                     "MultipleFound" {
                         #region Multiple accounts found
-                        $actionMessage = "setting manager for created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
+                        $actionMessage = "setting manager for created account"
         
                         # Throw terminal error
                         throw "Multiple accounts found where [$($managerCorrelationField)] = [$($managerCorrelationValue)]. Please correct this so the persons are unique."
@@ -608,7 +608,7 @@ try {
         
                     "NotFound" {
                         #region No account found
-                        $actionMessage = "setting manager for created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
+                        $actionMessage = "setting manager for created account"
 
                         $outputContext.AuditLogs.Add([PSCustomObject]@{
                                 # Action  = "" # Optional
@@ -622,7 +622,7 @@ try {
 
                     "CorrelationValueEmpty" {
                         #region No account found
-                        $actionMessage = "setting manager for created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
+                        $actionMessage = "setting manager for created account"
 
                         $outputContext.AuditLogs.Add([PSCustomObject]@{
                                 # Action  = "" # Optional
@@ -642,7 +642,7 @@ try {
 
         "Correlate" {
             #region Correlate account
-            $actionMessage = "correlating to account on [$($correlationField)] = [$($correlationValue)]"
+            $actionMessage = "correlating to account"
 
             $outputContext.AccountReference = "$($currentMicrosoftEntraIDAccount.id)"
             $outputContext.Data = $currentMicrosoftEntraIDAccount
@@ -661,7 +661,7 @@ try {
 
         "MultipleFound" {
             #region Multiple accounts found
-            $actionMessage = "correlating to account on [$($correlationField)] = [$($correlationValue)]"
+            $actionMessage = "correlating to account"
 
             # Throw terminal error
             throw "Multiple accounts found where [$($correlationField)] = [$($correlationValue)]. Please correct this so the persons are unique."
@@ -672,7 +672,7 @@ try {
 
         "NotFound" {
             #region No account found
-            $actionMessage = "correlating to account on [$($correlationField)] = [$($correlationValue)]"
+            $actionMessage = "correlating to account"
         
             # Throw terminal error
             throw "No account found where [$($correlationField)] = [$($correlationValue)] while configuration option [correlateOnly] is toggled."
