@@ -247,7 +247,7 @@ $managerAccountPropertiesToQuery = @("id")
 try {
     if ($actionContext.Configuration.correlateOnly -eq $true) {
         #region Correlate only
-        $actionMessage = "skipping updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+        $actionMessage = "skipping updating account"
         
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
@@ -280,7 +280,7 @@ try {
 
         #region Get Microsoft Entra ID account
         # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-        $actionMessage = "querying Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]"
+        $actionMessage = "querying Microsoft Entra ID account"
 
         $baseUri = "https://graph.microsoft.com/"
         $getMicrosoftEntraIDAccountSplatParams = @{
@@ -352,7 +352,7 @@ try {
             "Update" {
                 #region Update account
                 # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0&tabs=http
-                $actionMessage = "updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+                $actionMessage = "updating account"
                 # Create custom object with old and new values (for logging)
                 $accountChangedPropertiesObject = [PSCustomObject]@{
                     OldValues = @{}
@@ -411,7 +411,7 @@ try {
 
             "NoChanges" {
                 #region No changes
-                $actionMessage = "skipping updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+                $actionMessage = "skipping updating account"
 
                 $outputContext.Data = $currentMicrosoftEntraIDAccount
 
@@ -427,7 +427,7 @@ try {
 
             "MultipleFound" {
                 #region Multiple accounts found
-                $actionMessage = "updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+                $actionMessage = "updating account"
 
                 # Throw terminal error
                 throw "Multiple accounts found where [$($correlationField)] = [$($correlationValue)]. Please correct this so the persons are unique."
@@ -438,7 +438,7 @@ try {
 
             "NotFound" {
                 #region No account found
-                $actionMessage = "updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+                $actionMessage = "updating account"
         
                 # Throw terminal error
                 throw "No account found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
@@ -463,9 +463,9 @@ try {
             #region Verify manager correlation configuration and properties
             $actionMessage = "verifying manager correlation configuration and properties"
             if (-not[string]::IsNullOrEmpty($managerCorrelationValue)) {
-                #region Get Microsoft Entra ID manager account
+                #region Get manager Microsoft Entra ID account
                 # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-                $actionMessage = "querying Microsoft Entra ID manager account where [$($managerCorrelationField)] = [$($managerCorrelationValue)]"
+                $actionMessage = "querying manager Microsoft Entra ID account where [$($managerCorrelationField)] = [$($managerCorrelationValue)]"
     
                 $baseUri = "https://graph.microsoft.com/"
                 $getMicrosoftEntraIDManagerAccountSplatParams = @{
@@ -480,8 +480,8 @@ try {
     
                 $currentMicrosoftEntraIDManagerAccountId = $currentMicrosoftEntraIDManagerAccount.Id
     
-                Write-Verbose "Queried Microsoft Entra ID manager account where [$($managerCorrelationField)] = [$($managerCorrelationValue)]. Result: $($currentMicrosoftEntraIDManagerAccount | ConvertTo-Json)"
-                #endregion Get Microsoft Entra ID manager account
+                Write-Verbose "Queried manager Microsoft Entra ID account where [$($managerCorrelationField)] = [$($managerCorrelationValue)]. Result: $($currentMicrosoftEntraIDManagerAccount | ConvertTo-Json)"
+                #endregion Get manager Microsoft Entra ID account
             }
             #endregion Verify correlation configuration and properties
         }
@@ -544,7 +544,7 @@ try {
             "Update" {
                 #region Set Manager
                 # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-post-manager?view=graph-rest-1.0&tabs=http
-                $actionMessage = "updating manager for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
+                $actionMessage = "updating manager for account"
                 $baseUri = "https://graph.microsoft.com/"
     
                 # Update account with all other fields than the required fields
@@ -586,7 +586,7 @@ try {
     
             "MultipleFound" {
                 #region Multiple accounts found
-                $actionMessage = "updating manager for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
+                $actionMessage = "updating manager for account"
             
                 # Throw terminal error
                 throw "Multiple accounts found where [$($managerCorrelationField)] = [$($managerCorrelationValue)]. Please correct this so the persons are unique."
@@ -597,7 +597,7 @@ try {
             
             "NotFound" {
                 #region No account found
-                $actionMessage = "updating manager for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
+                $actionMessage = "updating manager for account"
     
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
@@ -611,7 +611,7 @@ try {
     
             "CorrelationValueEmpty" {
                 #region No account found
-                $actionMessage = "updating manager for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
+                $actionMessage = "updating manager for account"
     
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
