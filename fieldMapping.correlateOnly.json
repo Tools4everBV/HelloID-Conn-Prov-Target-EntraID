@@ -27,7 +27,7 @@
             "Create"
           ],
           "MappingMode": "Complex",
-          "Value": "\"function getUserPrincipalName() {\\r\\n    let userPrincipalName = '';\\r\\n\\r\\n    if (typeof Person.Accounts._e1285efbaf844429b9b5e032a3ee9f1c.userPrincipalName !== 'undefined' && Person.Accounts._e1285efbaf844429b9b5e032a3ee9f1c.userPrincipalName) {\\r\\n        userPrincipalName = Person.Accounts._e1285efbaf844429b9b5e032a3ee9f1c.userPrincipalName;\\r\\n    }\\r\\n\\r\\n    return userPrincipalName;\\r\\n}\\r\\n\\r\\ngetUserPrincipalName()\"",
+          "Value": "\"function getUserPrincipalName() {\\r\\n    let userPrincipalName = '';\\r\\n\\r\\n    if (typeof Person.Accounts.MicrosoftActiveDirectory.userPrincipalName !== 'undefined' && Person.Accounts.MicrosoftActiveDirectory.userPrincipalName) {\\r\\n        userPrincipalName = Person.Accounts.MicrosoftActiveDirectory.userPrincipalName;\\r\\n    }\\r\\n\\r\\n    return userPrincipalName;\\r\\n}\\r\\n\\r\\ngetUserPrincipalName()\"",
           "UsedInNotifications": true,
           "StoreInAccountData": true
         },
