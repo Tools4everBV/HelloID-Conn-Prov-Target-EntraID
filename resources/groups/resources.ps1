@@ -234,7 +234,8 @@ try {
     #endregion Get Microsoft Entra ID Groups
 
     foreach ($resource in $resourceContext.SourceData) {
-        Write-Verbose "Checking $($resource)"
+        $actionMessage = "querying group for resource: $($resource | ConvertTo-Json)"
+ 
         # Example: department_<departmentname>
         $groupName = "department_" + $resource.DisplayName
 
@@ -245,8 +246,6 @@ try {
         $groupName = Get-SanitizedGroupName -Name $groupName
 
         $correlationValue = $groupName
-
-        Write-Verbose "Querying group where [$($correlationField)] = [$($correlationValue)]"
 
         $correlatedResource = $null
         $correlatedResource = $microsoftEntraIDGroupsGrouped["$($correlationValue)"]
@@ -265,7 +264,7 @@ try {
             "CreateResource" {
                 #region Create group
                 # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-post-groups?view=graph-rest-1.0&tabs=http
-                $actionMessage = "creating group with name [$($groupName)] for resource: $($resource | ConvertTo-Json)"
+                $actionMessage = "creating group for resource: $($resource | ConvertTo-Json)"
 
                 # Example: Microsoft 365 group
                 $createGroupBody = @{
@@ -328,7 +327,7 @@ try {
 
             "CorrelateResource" {
                 #region Correlate group
-                $actionMessage = "correlating to group on [$($correlationField)] = [$($correlationValue)]"
+                $actionMessage = "correlating to group for resource: $($resource | ConvertTo-Json)"
 
                 Write-Verbose "Correlated to group with id [$($correlatedResource.id)] on [$($correlationField)] = [$($correlationValue)]."
                 #endregion Correlate group
