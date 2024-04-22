@@ -233,7 +233,7 @@ $account = Convert-StringToBoolean $account
 #endRegion account
 
 #region manager account
-if($actionContext.Configuration.setPrimaryManagerOnCreate -eq $true){
+if ($actionContext.Configuration.setPrimaryManagerOnCreate -eq $true) {
     # Define correlation
     $managerCorrelationField = "employeeId"
     $managerCorrelationValue = $personContext.Manager.ExternalId
@@ -244,7 +244,7 @@ if($actionContext.Configuration.setPrimaryManagerOnCreate -eq $true){
 #endRegion manager account
 
 #region guestInvite
-if($actionContext.Configuration.inviteAsGuest -eq $true){
+if ($actionContext.Configuration.inviteAsGuest -eq $true) {
     # Define correlation
     $guestInviteAccount = [PSCustomObject]$actionContext.Data.guestInvite
     # Remove properties with null-values
@@ -713,7 +713,7 @@ finally {
     }
 
     # Check if accountreference is set, if not set, set this with default value as this must contain a value
-    if ([String]::IsNullOrEmpty($outputContext.AccountReference)) {
-        $outputContext.AccountReference = "Currently not available"
+    if ([String]::IsNullOrEmpty($outputContext.AccountReference) -and $actionContext.DryRun -eq $true) {
+        $outputContext.AccountReference = "DryRun: Currently not available"
     }
 }
