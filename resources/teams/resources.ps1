@@ -237,7 +237,8 @@ try {
     #endregion Get Microsoft Entra ID Teams
 
     foreach ($resource in $resourceContext.SourceData) {
-        Write-Verbose "Checking $($resource)"
+        $actionMessage = "querying team for resource: $($resource | ConvertTo-Json)"
+ 
         # Example: department_<departmentname>
         $teamName = "department_" + $resource.DisplayName
 
@@ -247,11 +248,8 @@ try {
         # Sanitize team name, e.g. replace " - " with "_" or other sanitization actions 
         $teamName = Get-SanitizedGroupName -Name $teamName
 
-        $teamDescription = "$($resource.ExternalId)"
-
         $correlationValue = $teamName
 
-        Write-Verbose "Querying team where [$($correlationField)] = [$($correlationValue)]"
 
         $correlatedResource = $null
         $correlatedResource = $microsoftEntraIDTeamsGrouped["$($correlationValue)"]
@@ -270,12 +268,12 @@ try {
             "CreateResource" {
                 #region Create team
                 # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/team-post?view=graph-rest-1.0&tabs=http
-                $actionMessage = "creating team with name [$($teamName)] for resource: $($resource | ConvertTo-Json)"
+                $actionMessage = "creating team for resource: $($resource | ConvertTo-Json)"
 
                 $createTeamBody = @{
                     "template@odata.bind" = "https://graph.microsoft.com/v1.0/teamsTemplates('standard')"
                     displayName           = $teamName
-                    description           = $teamDescription
+                    description           = "$($resource.ExternalId)"
                     visibility            = "Private"
 
                     members               = [System.Collections.ArrayList]@()
@@ -324,7 +322,7 @@ try {
 
             "CorrelateResource" {
                 #region Correlate team
-                $actionMessage = "correlating to team on [$($correlationField)] = [$($correlationValue)]"
+                $actionMessage = "correlating to team"
 
                 Write-Verbose "Correlated to team with id [$($correlatedResource.id)] on [$($correlationField)] = [$($correlationValue)]."
                 #endregion Correlate team
