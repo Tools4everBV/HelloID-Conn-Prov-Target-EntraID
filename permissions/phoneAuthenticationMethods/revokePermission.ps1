@@ -170,12 +170,6 @@ function Resolve-HTTPError {
 }
 #endregion functions
 
-#region account
-# Define correlation
-$correlationField = "id"
-$correlationValue = $actionContext.References.Account
-#endregion account
-
 try {
     #region Verify account reference
     $actionMessage = "verifying account reference"
@@ -198,174 +192,108 @@ try {
     Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
     #endregion Create authorization headers
 
-    #region Get Microsoft Entra ID account
-    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-    $actionMessage = "querying Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]"
+    #region phoneAuthenticationMethod
+    #region Get current phoneAuthenticationMethod
+    # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/phoneauthenticationmethod-get?view=graph-rest-1.0&tabs=http
+    $actionMessage = "querying phone authentication methods for account"
 
     $baseUri = "https://graph.microsoft.com/"
-    $getMicrosoftEntraIDAccountSplatParams = @{
-        Uri         = "$($baseUri)/v1.0/users?`$filter=$correlationField eq '$correlationValue'&`$select=$($accountPropertiesToQuery -join ',')"
+    $getCurrentPhoneAuthenticationMethodsSplatParams = @{
+        Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods"
         Headers     = $headers
         Method      = "GET"
         Verbose     = $false
         ErrorAction = "Stop"
     }
-    $currentMicrosoftEntraIDAccount = $null
-    $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
 
-    Write-Verbose "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
-    #endregion Get Microsoft Entra ID account
+    $currentPhoneAuthenticationMethods = $null
+    $currentPhoneAuthenticationMethods = (Invoke-RestMethod @getCurrentPhoneAuthenticationMethodsSplatParams).Value
 
-    #region Revoke permisison
+    $currentPhoneAuthenticationMethod = ($currentPhoneAuthenticationMethods | Where-Object { $_.phoneType -eq "$($actionContext.References.Permission.Name)" }).phoneNumber
+
+    Write-Verbose "Queried phone authentication methods for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Result: $($currentPhoneAuthenticationMethods | ConvertTo-Json)"
+    #endregion Get current phoneAuthenticationMethod
+
     #region Calulate action
     $actionMessage = "calculating action"
-    if (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 1) {
-        $actionPermission = "RevokePermission"         
+    if (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 1) {
+        if ($actionContext.Configuration."$($actionContext.References.Permission.RemoveWhenRevokingEntitlement)" -eq $false) {
+            $actionPhoneAuthenticationMethod = "SkipDelete"
+        }
+        else {
+            $actionPhoneAuthenticationMethod = "Delete"
+        }
     }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -gt 1) {
-        $actionPermission = "MultipleFound"
-    }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 0) {
-        $actionPermission = "NotFound"
+    elseif (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 0) {
+        $actionPhoneAuthenticationMethod = "NoExistingData-SkipDelete"
     }
     #endregion Calulate action
 
     #region Process
-    switch ($actionPermission) {
-        "RevokePermission" {
-            #region phoneAuthenticationMethod
-            #region Get current phoneAuthenticationMethod
-            # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/phoneauthenticationmethod-get?view=graph-rest-1.0&tabs=http
-            $actionMessage = "querying phone authentication methods for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-
+    switch ($actionPhoneAuthenticationMethod) {
+        "Delete" {
+            #region Delete phoneAuthenticationMethod
+            # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/phoneauthenticationmethod-delete?view=graph-rest-1.0&tabs=http
+            $actionMessage = "deleting phone authentication method [$($actionContext.References.Permission.Name)] for account"
             $baseUri = "https://graph.microsoft.com/"
-            $getCurrentPhoneAuthenticationMethodsSplatParams = @{
-                Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods"
+                    
+            $deletePhoneAuthenticationMethodSplatParams = @{
+                Uri         = "$baseUri/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods/$($actionContext.References.Permission.Id)"
                 Headers     = $headers
-                Method      = "GET"
+                Method      = "DELETE"
                 Verbose     = $false
                 ErrorAction = "Stop"
             }
 
-            $currentPhoneAuthenticationMethods = $null
-            $currentPhoneAuthenticationMethods = (Invoke-RestMethod @getCurrentPhoneAuthenticationMethodsSplatParams).Value
+            if (-Not($actionContext.DryRun -eq $true)) {
+                Write-Verbose "SplatParams: $($deletePhoneAuthenticationMethodSplatParams | ConvertTo-Json)"
 
-            $currentPhoneAuthenticationMethod = ($currentPhoneAuthenticationMethods | Where-Object { $_.phoneType -eq "$($actionContext.References.Permission.Name)" }).phoneNumber
+                $deletedPhoneAuthenticationMethod = Invoke-RestMethod @deletePhoneAuthenticationMethodSplatParams
 
-            Write-Verbose "Queried phone authentication methods for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Result: $($currentPhoneAuthenticationMethods | ConvertTo-Json)"
-            #endregion Get current phoneAuthenticationMethod
-
-            #region Calulate action
-            $actionMessage = "calculating action"
-            if (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 1) {
-                if ($actionContext.Configuration."$($actionContext.References.Permission.RemoveWhenRevokingEntitlement)" -eq $false) {
-                    $actionPhoneAuthenticationMethod = "SkipDelete"
-                }
-                else {
-                    $actionPhoneAuthenticationMethod = "Delete"
-                }
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = "Deleted phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]."
+                        IsError = $false
+                    })
             }
-            elseif (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 0) {
-                $actionPhoneAuthenticationMethod = "NoExistingData-SkipDelete"
+            else {
+                Write-Warning "DryRun: Would delete phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]."
             }
-            #endregion Calulate action
-
-            #region Process
-            switch ($actionPhoneAuthenticationMethod) {
-                "Delete" {
-                    #region Delete phoneAuthenticationMethod
-                    # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/phoneauthenticationmethod-delete?view=graph-rest-1.0&tabs=http
-                    $actionMessage = "deleting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]"
-                    $baseUri = "https://graph.microsoft.com/"
-                    
-                    $deletePhoneAuthenticationMethodSplatParams = @{
-                        Uri         = "$baseUri/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods/$($actionContext.References.Permission.Id)"
-                        Headers     = $headers
-                        Method      = "DELETE"
-                        Verbose     = $false
-                        ErrorAction = "Stop"
-                    }
-
-                    if (-Not($actionContext.DryRun -eq $true)) {
-                        Write-Verbose "SplatParams: $($deletePhoneAuthenticationMethodSplatParams | ConvertTo-Json)"
-
-                        $deletedPhoneAuthenticationMethod = Invoke-RestMethod @deletePhoneAuthenticationMethodSplatParams
-
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                # Action  = "" # Optional
-                                Message = "Deleted phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]."
-                                IsError = $false
-                            })
-                    }
-                    else {
-                        Write-Warning "DryRun: Would delete phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]."
-                    }
-                    #endregion Delete phoneAuthenticationMethod
-
-                    break
-                }
-
-                "SkipDelete" {
-                    #region Skip delete
-                    $actionMessage = "skipping deleting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
-
-                    $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            # Action  = "" # Optional
-                            Message = "Skipped deleting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]. Reason: Configured to not delete on revoke of entitlement."
-                            IsError = $false
-                        })
-                    #endregion Skip delete
-    
-                    break
-                }
-
-                "NoExistingData-SkipDelete" {
-                    #region No existing data, skipping delete
-                    $actionMessage = "skipping deleting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
-
-                    $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            # Action  = "" # Optional
-                            Message = "Skipped deleting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]. Reason: Nothing to delete."
-                            IsError = $false
-                        })
-                    #endregion  No existing data, skipping delete
-
-                    break
-                }
-            }
-            #endregion Process
-            #endregion phoneAuthenticationMethod
+            #endregion Delete phoneAuthenticationMethod
 
             break
         }
 
-        "MultipleFound" {
-            #region Multiple accounts found
-            $actionMessage = "deleting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+        "SkipDelete" {
+            #region Skip delete
+            $actionMessage = "skipping deleting phone authentication method [$($actionContext.References.Permission.Name)] for account"
 
-            # Throw terminal error
-            throw "Multiple accounts found where [$($correlationField)] = [$($correlationValue)]. Please correct this so the persons are unique."
-            #endregion Multiple accounts found
-
-            break
-        }
-
-        "NotFound" {
-            #region No account found
-            $actionMessage = "skipping deleting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
-        
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
-                    Message = "Skipped deleting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: No account found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
+                    Message = "Skipped deleting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]. Reason: Configured to not delete on revoke of entitlement."
                     IsError = $false
                 })
-            #endregion No account found
+            #endregion Skip delete
+    
+            break
+        }
+
+        "NoExistingData-SkipDelete" {
+            #region No existing data, skipping delete
+            $actionMessage = "skipping deleting phone authentication method [$($actionContext.References.Permission.Name)] for account"
+
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = "Skipped deleting phone authentication method [$($actionContext.References.Permission.Name)] for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old value: [$($currentPhoneAuthenticationMethod)]. Reason: Nothing to delete."
+                    IsError = $false
+                })
+            #endregion  No existing data, skipping delete
 
             break
         }
     }
     #endregion Process
-    #endregion Revoke permisison
+    #endregion phoneAuthenticationMethod
 }
 catch {
     $ex = $PSItem
