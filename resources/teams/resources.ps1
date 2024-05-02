@@ -21,6 +21,36 @@ foreach ($permission in $actionContext.CurrentPermissions) {
 }
 
 #region functions
+function Remove-StringLatinCharacters {
+    PARAM ([string]$String)
+    [Text.Encoding]::ASCII.GetString([Text.Encoding]::GetEncoding("Cyrillic").GetBytes($String))
+}
+
+function Get-SanitizedGroupName {
+    # The names of security principal objects can contain all Unicode characters except the special LDAP characters defined in RFC 2253.
+    # This list of special characters includes: a leading space a trailing space and any of the following characters: # , + " \ < > 
+    # A group account cannot consist solely of numbers, periods (.), or spaces. Any leading periods or spaces are cropped.
+    # https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc776019(v=ws.10)?redirectedfrom=MSDN
+    # https://www.ietf.org/rfc/rfc2253.txt    
+    param(
+        [parameter(Mandatory = $true)][String]$Name
+    )
+    $newName = $name.trim()
+    $newName = $newName -replace " - ", "_"
+    $newName = $newName -replace "[`,~,!,#,$,%,^,&,*,(,),+,=,<,>,?,/,',`",,:,\,|,},{,.]", ""
+    $newName = $newName -replace "\[", ""
+    $newName = $newName -replace "]", ""
+    $newName = $newName -replace " ", "_"
+    $newName = $newName -replace "\.\.\.\.\.", "."
+    $newName = $newName -replace "\.\.\.\.", "."
+    $newName = $newName -replace "\.\.\.", "."
+    $newName = $newName -replace "\.\.", "."
+
+    # Remove diacritics
+    $newName = Remove-StringLatinCharacters $newName
+    
+    return $newName
+}
 function Convert-StringToBoolean($obj) {
     if ($obj -is [PSCustomObject]) {
         foreach ($property in $obj.PSObject.Properties) {
