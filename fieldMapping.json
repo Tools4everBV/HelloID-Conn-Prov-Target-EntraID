@@ -465,7 +465,6 @@
       "MappingActions": [
         {
           "MapForActions": [
-            "Create",
             "Update",
             "Enable"
           ],
@@ -476,6 +475,7 @@
         },
         {
           "MapForActions": [
+            "Create",
             "Disable"
           ],
           "MappingMode": "Fixed",
@@ -486,6 +486,23 @@
         {
           "MapForActions": [
             "Delete"
+          ],
+          "MappingMode": "None",
+          "Value": "\"\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "manager.id",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
           ],
           "MappingMode": "None",
           "Value": "\"\"",
