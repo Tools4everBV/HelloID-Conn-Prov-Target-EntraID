@@ -301,7 +301,7 @@ try {
                     displayName     = $groupName
                     description     = $groupDescription
                     mailNickname    = $groupName.Replace(" ", "")
-                    visibility      = $groupVisibility
+                    # visibility      = $groupVisibility # Optional parameter with fixed values. Forexample 'Public' or 'Private'
 
                     groupTypes      = @("Unified") # Needs to be set to with 'Unified' to create Microsoft 365 group
                     mailEnabled     = $true # Needs to be enabled to create Microsoft 365 group
@@ -316,7 +316,7 @@ try {
                 #     displayName     = $groupName
                 #     description     = $groupDescription
                 #     mailNickname    = $groupName.Replace(" ", "")
-                #     visibility      = $groupVisibility
+                #     # visibility      = $groupVisibility # Optional parameter with fixed values. Forexample 'Public' or 'Private'  
 
                 #     #groupTypes = @("") # Needs to be empty to create Security group
                 #     mailEnabled     = $false # Needs to be disabled to create Security group
