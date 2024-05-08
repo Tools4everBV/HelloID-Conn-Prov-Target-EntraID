@@ -207,6 +207,11 @@ function Resolve-HTTPError {
 #endregion functions
 
 #region team
+# Make sure the resourceContext data is unique. Fill in the required fields after -unique
+# Example: department
+$resourceData = $resourceContext.SourceData | Select-Object -Unique ExternalId, DisplayName
+# Example: title
+# $resourceData = $resourceContext.SourceData | Select-Object -Unique ExternalId, Name
 # Define correlation
 $correlationField = "displayName"
 $correlationValue = "" # Defined later in script
@@ -266,7 +271,7 @@ try {
     Write-Information "Queried Microsoft Entra ID Teams. Result count: $(($microsoftEntraIDTeams | Measure-Object).Count)"
     #endregion Get Microsoft Entra ID Teams
 
-    foreach ($resource in $resourceContext.SourceData) {
+    foreach ($resource in $resourceData) {
         $actionMessage = "querying team for resource: $($resource | ConvertTo-Json)"
  
         # Example: department_<departmentname>
