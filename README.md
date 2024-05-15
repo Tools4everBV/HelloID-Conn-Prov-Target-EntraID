@@ -160,7 +160,7 @@ For this connector the following permissions are used as **Application permissio
 -	Read and Write all user’s full profiles by using *User.ReadWrite.All*
 -	Read and Write all groups in an organization’s directory by using *Group.ReadWrite.All*
 -	Read and write all group memberships by using *GroupMember.ReadWrite.All*
--	Read and write all users' authentication methods by using *GroupMember.ReadWrite.All*
+-	Read and write all users' authentication methods by using *UserAuthenticationMethod.ReadWrite.All*
 
 Some high-privilege permissions can be set to admin-restricted and require an administrators consent to be granted.
 
