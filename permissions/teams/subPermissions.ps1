@@ -247,7 +247,7 @@ try {
                     $teamName = Get-SanitizedGroupName -Name $teamName
 
                     # Get team to use objectGuid to avoid name change issues
-                    $filter = "resourceProvisioningOptions/Any(x:x eq 'Team') & displayName+eq+'$($teamName)'"
+                    $filter = "displayName+eq+'$($teamName)' & resourceProvisioningOptions/Any(x:x eq 'Team')"
                     Write-Verbose "Querying Microsoft Entra ID team that matches filter [$($filter)]"
 
                     $baseUri = "https://graph.microsoft.com/"
