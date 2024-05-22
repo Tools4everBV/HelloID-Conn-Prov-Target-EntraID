@@ -420,8 +420,7 @@
       "MappingActions": [
         {
           "MapForActions": [
-            "Create",
-            "Update"
+            "Create"
           ],
           "MappingMode": "Complex",
           "Value": "\"// Mapping logic to generate the Mail according to the following convention.\\r\\n// First choice\\t        B\\tjanine.vandenboele\\r\\n// \\t                    BP\\tjanine.vandenboele\\r\\n// \\t                    P\\tjanine.devries\\r\\n// \\t                    PB  janine.devries\\r\\n// If in use\\t        B\\tjanine_vandenboele\\r\\n// \\t                    BP\\tjanine_vandenboele\\r\\n// \\t                    P\\tjanine_devries\\r\\n// \\t                    PB  janine_devries\\r\\n// If also in use   \\tB\\tj.vandenboele\\r\\n// \\t                    BP\\tj.vandenboele\\r\\n// \\t                    P\\tj.devries\\r\\n// \\t                    PB  j.devries\\r\\n// If also in use   \\tB\\tj_vandenboele\\r\\n// \\t                    BP\\tj_vandenboele\\r\\n// \\t                    P\\tj_devries\\r\\n// \\t                    PB  j_devries\\r\\n// If also in use   \\tB\\tj_vandenboele2\\r\\n// \\t                    BP\\tj_vandenboele2\\r\\n// \\t                    P\\tj_devries2\\r\\n// \\t                    PB  j_devries2\\r\\n// Etc.\\r\\nfunction generateMail() {\\r\\n    let nickName = Person.Name.NickName;\\r\\n    let middleName = Person.Name.FamilyNamePrefix;\\r\\n    let lastName = Person.Name.FamilyName;\\r\\n    let middleNamePartner = Person.Name.FamilyNamePartnerPrefix;\\r\\n    let lastNamePartner = Person.Name.FamilyNamePartner;\\r\\n    let convention = Person.Name.Convention;\\r\\n\\r\\n    let mailNickName = '';\\r\\n    if (Iteration === 0) {\\r\\n        mailNickName = mailNickName + nickName + '.';\\r\\n    } else if (Iteration === 1) {\\r\\n        mailNickName = mailNickName + nickName + '_';\\r\\n    } else if (Iteration === 2) {\\r\\n        mailNickName = mailNickName + nickName.substring(0, 1) + '.';\\r\\n    } else {\\r\\n        mailNickName = mailNickName + nickName.substring(0, 1) + '_';\\r\\n    }\\r\\n\\r\\n    switch (convention) {\\r\\n        case \\\"P\\\":\\r\\n        case \\\"PB\\\":\\r\\n            if (typeof middleNamePartner !== 'undefined' && middleNamePartner) { mailNickName = mailNickName + middleNamePartner }\\r\\n            mailNickName = mailNickName + lastNamePartner;\\r\\n            break;\\r\\n        case \\\"B\\\":\\r\\n        case \\\"BP\\\":\\r\\n        default:\\r\\n            if (typeof middleName !== 'undefined' && middleName) { mailNickName = mailNickName + middleName }\\r\\n            mailNickName = mailNickName + lastName;\\r\\n            break;\\r\\n    }\\r\\n    // Trim spaces at start and end\\r\\n    mailNickName = mailNickName.trim();\\r\\n\\r\\n    // Convert to lower case\\r\\n    mailNickName = mailNickName.toLowerCase();\\r\\n\\r\\n    // Remove diacritical chars\\r\\n    mailNickName = deleteDiacriticalMarks(mailNickName);\\r\\n\\r\\n    // Remove blank chars and \\\"'\\\"\\r\\n    mailNickName = mailNickName.replace(/[^0-9a-zA-Z.\\\\-_]/g, '');\\r\\n\\r\\n    // Shorten string to maxAttributeLength minus iteration length\\r\\n    const domain = 'consultancytest.onmicrosoft.com';\\r\\n    const maxAttributeLength = (256 - domain.toString().length);\\r\\n    mailNickName = mailNickName.substring(0, maxAttributeLength);\\r\\n\\r\\n    // Use the iterator if needed\\r\\n    const suffix = Iteration <= 3 ? '' : (Iteration - 2);\\r\\n    mailNickName = mailNickName + suffix;\\r\\n\\r\\n    return mailNickName + '@' + domain;\\r\\n}\\r\\n\\r\\ngenerateMail();\"",
@@ -432,7 +431,8 @@
           "MapForActions": [
             "Enable",
             "Disable",
-            "Delete"
+            "Delete",
+            "Update"
           ],
           "MappingMode": "None",
           "Value": "\"\"",
