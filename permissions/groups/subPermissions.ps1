@@ -311,13 +311,34 @@ try {
             if (-Not($actionContext.DryRun -eq $true)) {
                 Write-Verbose "SplatParams: $($revokePermissionSplatParams | ConvertTo-Json)"
 
-                $revokedPermission = Invoke-RestMethod @revokePermissionSplatParams
+                try {
+                    $revokedPermission = Invoke-RestMethod @revokePermissionSplatParams
 
-                $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Action  = "RevokePermission"
-                        Message = "Revoked group [$($permission.Value)] with id [$($permission.Name)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
-                        IsError = $false
-                    })
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            Action  = "RevokePermission"
+                            Message = "Revoked group [$($permission.Value)] with id [$($permission.Name)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+                            IsError = $false
+                        })
+                }
+                catch {
+                    $ex = $PSItem
+                    if ($($ex.Exception.GetType().FullName -eq "Microsoft.PowerShell.Commands.HttpResponseException") -or
+                        $($ex.Exception.GetType().FullName -eq "System.Net.WebException")) {
+                        $errorObj = Resolve-MicrosoftGraphAPIError -ErrorObject $ex
+                        $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+                    }
+                    # If already revoked the code should not stop but continue
+                    if ($auditMessage -like "*Error code: Request_ResourceNotFound*" -and $auditMessage -like "*$($actionContext.References.Permission.id)*") {
+                        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                Action  = "RevokePermission"
+                                Message = "Skipped revoking group [$($permission.Value)] with id [$($permission.Name)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User is already no longer a member or the group no longer exists."
+                                IsError = $false
+                            })
+                    }
+                    else {
+                        throw $ex
+                    }     
+                }
             }
             else {
                 Write-Warning "DryRun: Would revoke group [$($permission.Value)] with id [$($permission.Name)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
@@ -359,13 +380,34 @@ try {
             if (-Not($actionContext.DryRun -eq $true)) {
                 Write-Verbose "SplatParams: $($grantPermissionSplatParams | ConvertTo-Json)"
 
-                $grantedPermission = Invoke-RestMethod @grantPermissionSplatParams
+                try {
+                    $grantedPermission = Invoke-RestMethod @grantPermissionSplatParams
 
-                $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Action  = "GrantPermission"
-                        Message = "Granted group [$($permission.Value)] with id [$($permission.Name)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
-                        IsError = $false
-                    })
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            Action  = "GrantPermission"
+                            Message = "Granted group [$($permission.Value)] with id [$($permission.Name)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+                            IsError = $false
+                        })
+                }
+                catch {
+                    $ex = $PSItem
+                    if ($($ex.Exception.GetType().FullName -eq "Microsoft.PowerShell.Commands.HttpResponseException") -or
+                        $($ex.Exception.GetType().FullName -eq "System.Net.WebException")) {
+                        $errorObj = Resolve-MicrosoftGraphAPIError -ErrorObject $ex
+                        $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+                    }
+                    # If already granted the code should not stop but continue
+                    if ($auditMessage -like "*One or more added object references already exist for the following modified properties: 'members'*") {
+                        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                Action  = "GrantPermission"
+                                Message = "Skipped granting group [$($permission.Value)] with id [$($permission.Name)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User is already a member of the group."
+                                IsError = $false
+                            })
+                    }
+                    else {
+                        throw $ex
+                    }     
+                }
             }
             else {
                 Write-Warning "DryRun: Would grant group [$($permission.Value)] with id [$($permission.Name)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
@@ -388,29 +430,13 @@ catch {
         $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
     
-    if ($auditMessage -like "*Error code: Request_ResourceNotFound*" -and $auditMessage -like "*$($actionContext.References.Permission.id)*") {
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                Action  = "RevokePermission"
-                Message = "Skipped revoking group [$($permission.Value)] with id [$($permission.Name)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User is already no longer a member or the group no longer exists."
-                IsError = $false
-            })
-    }
-    elseif ($auditMessage -like "*One or more added object references already exist for the following modified properties: 'members'*") {
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                Action  = "GrantPermission"
-                Message = "Skipped granting group [$($permission.Value)] with id [$($permission.Name)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User is already a member of the group."
-                IsError = $false
-            })
-    }
-    else {
-        Write-Warning $warningMessage
+    Write-Warning $warningMessage
     
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = $auditMessage
-                IsError = $true
-            })
-    }
+    $outputContext.AuditLogs.Add([PSCustomObject]@{
+            # Action  = "" # Optional
+            Message = $auditMessage
+            IsError = $true
+        })
 }
 finally { 
     # Handle case of empty defined dynamic permissions.  Without this the entitlement will error.
