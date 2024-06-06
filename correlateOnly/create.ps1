@@ -1,6 +1,6 @@
 #################################################
 # HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Create
-# Create and update or correlate to account
+# Correlate to account
 # PowerShell V2
 #################################################
 # Enable TLS1.2
