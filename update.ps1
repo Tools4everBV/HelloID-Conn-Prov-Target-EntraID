@@ -207,211 +207,198 @@ $managerAccountPropertiesToQuery = @("id")
 #endRegion manager account
 
 try {
-    if ($actionContext.Configuration.correlateOnly -eq $true) {
-        #region Correlate only
-        $actionMessage = "skipping updating account"
-        
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = "Skipped updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: Configuration option [correlateOnly] is toggled."
-                IsError = $false
-            })
-        #region Correlate only
+    #region Verify account reference
+    $actionMessage = "verifying account reference"
+    if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
+        throw "The account reference could not be found"
     }
-    else {
-        #region Verify account reference
-        $actionMessage = "verifying account reference"
-        if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
-            throw "The account reference could not be found"
+    #endregion Verify account reference
+
+    #region Create authorization headers
+    $actionMessage = "creating authorization headers"
+
+    $authorizationHeadersSplatParams = @{
+        TenantId     = $actionContext.Configuration.TenantID
+        ClientId     = $actionContext.Configuration.AppId
+        ClientSecret = $actionContext.Configuration.AppSecret
+    }
+
+    $headers = New-AuthorizationHeaders @authorizationHeadersSplatParams
+
+    Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
+    #endregion Create authorization headers
+
+    #region Get Microsoft Entra ID account
+    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
+    $actionMessage = "querying Microsoft Entra ID account"
+
+    $baseUri = "https://graph.microsoft.com/"
+    $getMicrosoftEntraIDAccountSplatParams = @{
+        Uri         = "$($baseUri)/v1.0/users?`$filter=$correlationField eq '$correlationValue'&`$select=$($accountPropertiesToQuery -join ',')"
+        Headers     = $headers
+        Method      = "GET"
+        Verbose     = $false
+        ErrorAction = "Stop"
+    }
+    $currentMicrosoftEntraIDAccount = $null
+    $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
+
+    Write-Verbose "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
+    #endregion Get Microsoft Entra ID account
+
+    #region Account
+    #region Calulate action
+    $actionMessage = "calculating action"
+    if (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 1) {
+        $actionMessage = "comparing current account to mapped properties"
+
+        # Set Previous data (if there are no changes between PreviousData and Data, HelloID will log "update finished with no changes")
+        $outputContext.PreviousData = $currentMicrosoftEntraIDAccount
+
+        # Create reference object from correlated account
+        $accountReferenceObject = [PSCustomObject]@{}
+        foreach ($currentMicrosoftEntraIDAccountProperty in ($currentMicrosoftEntraIDAccount | Get-Member -MemberType NoteProperty)) {
+            # Add property using -join to support array values
+            $accountReferenceObject | Add-Member -MemberType NoteProperty -Name $currentMicrosoftEntraIDAccountProperty.Name -Value ($currentMicrosoftEntraIDAccount.$($currentMicrosoftEntraIDAccountProperty.Name) -join ",") -Force
         }
-        #endregion Verify account reference
 
-        #region Create authorization headers
-        $actionMessage = "creating authorization headers"
-
-        $authorizationHeadersSplatParams = @{
-            TenantId     = $actionContext.Configuration.TenantID
-            ClientId     = $actionContext.Configuration.AppId
-            ClientSecret = $actionContext.Configuration.AppSecret
+        # Create difference object from mapped properties
+        $accountDifferenceObject = [PSCustomObject]@{}
+        foreach ($accountAccountProperty in $account.PSObject.Properties) {
+            # Add property using -join to support array values
+            $accountDifferenceObject | Add-Member -MemberType NoteProperty -Name $accountAccountProperty.Name -Value ($accountAccountProperty.Value -join ",") -Force
         }
 
-        $headers = New-AuthorizationHeaders @authorizationHeadersSplatParams
-
-        Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
-        #endregion Create authorization headers
-
-        #region Get Microsoft Entra ID account
-        # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-        $actionMessage = "querying Microsoft Entra ID account"
-
-        $baseUri = "https://graph.microsoft.com/"
-        $getMicrosoftEntraIDAccountSplatParams = @{
-            Uri         = "$($baseUri)/v1.0/users?`$filter=$correlationField eq '$correlationValue'&`$select=$($accountPropertiesToQuery -join ',')"
-            Headers     = $headers
-            Method      = "GET"
-            Verbose     = $false
-            ErrorAction = "Stop"
+        $accountSplatCompareProperties = @{
+            ReferenceObject  = $accountReferenceObject.PSObject.Properties | Where-Object { $_.Name -in $accountPropertiesToCompare }
+            DifferenceObject = $accountDifferenceObject.PSObject.Properties | Where-Object { $_.Name -in $accountPropertiesToCompare }
         }
-        $currentMicrosoftEntraIDAccount = $null
-        $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
+        if ($null -ne $accountSplatCompareProperties.ReferenceObject -and $null -ne $accountSplatCompareProperties.DifferenceObject) {
+            $accountPropertiesChanged = Compare-Object @accountSplatCompareProperties -PassThru
+            $accountOldProperties = $accountPropertiesChanged | Where-Object { $_.SideIndicator -eq "<=" }
+            $accountNewProperties = $accountPropertiesChanged | Where-Object { $_.SideIndicator -eq "=>" }
+        }
 
-        Write-Verbose "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
-        #endregion Get Microsoft Entra ID account
+        if ($accountNewProperties) {
+            $actionAccount = "Update"
+            Write-Information "Account property(s) required to update: $($accountNewProperties.Name -join ', ')"
+        }
+        else {
+            $actionAccount = "NoChanges"
+        }            
 
-        #region Account
-        #region Calulate action
-        $actionMessage = "calculating action"
-        if (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 1) {
-            $actionMessage = "comparing current account to mapped properties"
+        Write-Verbose "Compared current account to mapped properties. Result: $actionAccount"
+    }
+    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -gt 1) {
+        $actionAccount = "MultipleFound"
+    }
+    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 0) {
+        $actionAccount = "NotFound"
+    }
+    #endregion Calulate action
 
-            # Set Previous data (if there are no changes between PreviousData and Data, HelloID will log "update finished with no changes")
-            $outputContext.PreviousData = $currentMicrosoftEntraIDAccount
-
-            # Create reference object from correlated account
-            $accountReferenceObject = [PSCustomObject]@{}
-            foreach ($currentMicrosoftEntraIDAccountProperty in ($currentMicrosoftEntraIDAccount | Get-Member -MemberType NoteProperty)) {
-                # Add property using -join to support array values
-                $accountReferenceObject | Add-Member -MemberType NoteProperty -Name $currentMicrosoftEntraIDAccountProperty.Name -Value ($currentMicrosoftEntraIDAccount.$($currentMicrosoftEntraIDAccountProperty.Name) -join ",") -Force
+    #region Process
+    switch ($actionAccount) {
+        "Update" {
+            #region Update account
+            # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0&tabs=http
+            $actionMessage = "updating account"
+            # Create custom object with old and new values (for logging)
+            $accountChangedPropertiesObject = [PSCustomObject]@{
+                OldValues = @{}
+                NewValues = @{}
             }
 
-            # Create difference object from mapped properties
-            $accountDifferenceObject = [PSCustomObject]@{}
-            foreach ($accountAccountProperty in $account.PSObject.Properties) {
-                # Add property using -join to support array values
-                $accountDifferenceObject | Add-Member -MemberType NoteProperty -Name $accountAccountProperty.Name -Value ($accountAccountProperty.Value -join ",") -Force
+            foreach ($accountOldProperty in ($accountOldProperties | Where-Object { $_.Name -in $accountNewProperties.Name })) {
+                $accountChangedPropertiesObject.OldValues.$($accountOldProperty.Name) = $accountOldProperty.Value
             }
 
-            $accountSplatCompareProperties = @{
-                ReferenceObject  = $accountReferenceObject.PSObject.Properties | Where-Object { $_.Name -in $accountPropertiesToCompare }
-                DifferenceObject = $accountDifferenceObject.PSObject.Properties | Where-Object { $_.Name -in $accountPropertiesToCompare }
-            }
-            if ($null -ne $accountSplatCompareProperties.ReferenceObject -and $null -ne $accountSplatCompareProperties.DifferenceObject) {
-                $accountPropertiesChanged = Compare-Object @accountSplatCompareProperties -PassThru
-                $accountOldProperties = $accountPropertiesChanged | Where-Object { $_.SideIndicator -eq "<=" }
-                $accountNewProperties = $accountPropertiesChanged | Where-Object { $_.SideIndicator -eq "=>" }
+            foreach ($accountNewProperty in $accountNewProperties) {
+                $accountChangedPropertiesObject.NewValues.$($accountNewProperty.Name) = $accountNewProperty.Value
             }
 
-            if ($accountNewProperties) {
-                $actionAccount = "Update"
-                Write-Information "Account property(s) required to update: $($accountNewProperties.Name -join ', ')"
-            }
-            else {
-                $actionAccount = "NoChanges"
-            }            
+            $baseUri = "https://graph.microsoft.com/"
 
-            Write-Verbose "Compared current account to mapped properties. Result: $actionAccount"
-        }
-        elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -gt 1) {
-            $actionAccount = "MultipleFound"
-        }
-        elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 0) {
-            $actionAccount = "NotFound"
-        }
-        #endregion Calulate action
+            # Set output data with current account data
+            $outputContext.Data = $currentMicrosoftEntraIDAccount
 
-        #region Process
-        switch ($actionAccount) {
-            "Update" {
-                #region Update account
-                # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0&tabs=http
-                $actionMessage = "updating account"
-                # Create custom object with old and new values (for logging)
-                $accountChangedPropertiesObject = [PSCustomObject]@{
-                    OldValues = @{}
-                    NewValues = @{}
-                }
+            # Update account with updated fields
+            $updateAccountBody = @{}
+            foreach ($accountNewProperty in $accountNewProperties) {
+                [void]$updateAccountBody.Add($accountNewProperty.Name, $accountNewProperty.Value)
 
-                foreach ($accountOldProperty in ($accountOldProperties | Where-Object { $_.Name -in $accountNewProperties.Name })) {
-                    $accountChangedPropertiesObject.OldValues.$($accountOldProperty.Name) = $accountOldProperty.Value
-                }
-
-                foreach ($accountNewProperty in $accountNewProperties) {
-                    $accountChangedPropertiesObject.NewValues.$($accountNewProperty.Name) = $accountNewProperty.Value
-                }
-
-                $baseUri = "https://graph.microsoft.com/"
-
-                # Set output data with current account data
-                $outputContext.Data = $currentMicrosoftEntraIDAccount
-
-                # Update account with updated fields
-                $updateAccountBody = @{}
-                foreach ($accountNewProperty in $accountNewProperties) {
-                    [void]$updateAccountBody.Add($accountNewProperty.Name, $accountNewProperty.Value)
-
-                    # Update output data with new account data
-                    $outputContext.Data | Add-Member -MemberType NoteProperty -Name $accountNewProperty.Name -Value $accountNewProperty.Value -Force
-                }
-
-                $updateAccountSplatParams = @{
-                    Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)"
-                    Headers     = $headers
-                    Method      = "PATCH"
-                    Body        = ($updateAccountBody | ConvertTo-Json -Depth 10)
-                    Verbose     = $false
-                    ErrorAction = "Stop"
-                }
-
-                if (-Not($actionContext.DryRun -eq $true)) {
-                    Write-Verbose "SplatParams: $($updateAccountSplatParams | ConvertTo-Json)"
-
-                    $updatedAccount = Invoke-RestMethod @updateAccountSplatParams
-
-                    $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            # Action  = "" # Optional
-                            Message = "Updated account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old values: $($accountChangedPropertiesObject.oldValues | ConvertTo-Json). New values: $($accountChangedPropertiesObject.newValues | ConvertTo-Json)"
-                            IsError = $false
-                        })
-                }
-                else {
-                    Write-Warning "DryRun: Would update account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
-                }
-                #endregion Update account
-
-                break
+                # Update output data with new account data
+                $outputContext.Data | Add-Member -MemberType NoteProperty -Name $accountNewProperty.Name -Value $accountNewProperty.Value -Force
             }
 
-            "NoChanges" {
-                #region No changes
-                $actionMessage = "skipping updating account"
+            $updateAccountSplatParams = @{
+                Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)"
+                Headers     = $headers
+                Method      = "PATCH"
+                Body        = ($updateAccountBody | ConvertTo-Json -Depth 10)
+                Verbose     = $false
+                ErrorAction = "Stop"
+            }
 
-                $outputContext.Data = $currentMicrosoftEntraIDAccount
+            if (-Not($actionContext.DryRun -eq $true)) {
+                Write-Verbose "SplatParams: $($updateAccountSplatParams | ConvertTo-Json)"
+
+                $updatedAccount = Invoke-RestMethod @updateAccountSplatParams
 
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
-                        Message = "Skipped updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: No changes."
+                        Message = "Updated account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old values: $($accountChangedPropertiesObject.oldValues | ConvertTo-Json). New values: $($accountChangedPropertiesObject.newValues | ConvertTo-Json)"
                         IsError = $false
                     })
-                #endregion No changes
-
-                break
             }
-
-            "MultipleFound" {
-                #region Multiple accounts found
-                $actionMessage = "updating account"
-
-                # Throw terminal error
-                throw "Multiple accounts found where [$($correlationField)] = [$($correlationValue)]. Please correct this so the persons are unique."
-                #endregion Multiple accounts found
-
-                break
+            else {
+                Write-Warning "DryRun: Would update account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
             }
+            #endregion Update account
 
-            "NotFound" {
-                #region No account found
-                $actionMessage = "updating account"
-        
-                # Throw terminal error
-                throw "No account found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
-                #endregion No account found
-
-                break
-            }
+            break
         }
-        #endregion Process
-        #endregion Account
+
+        "NoChanges" {
+            #region No changes
+            $actionMessage = "skipping updating account"
+
+            $outputContext.Data = $currentMicrosoftEntraIDAccount
+
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = "Skipped updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: No changes."
+                    IsError = $false
+                })
+            #endregion No changes
+
+            break
+        }
+
+        "MultipleFound" {
+            #region Multiple accounts found
+            $actionMessage = "updating account"
+
+            # Throw terminal error
+            throw "Multiple accounts found where [$($correlationField)] = [$($correlationValue)]. Please correct this so the persons are unique."
+            #endregion Multiple accounts found
+
+            break
+        }
+
+        "NotFound" {
+            #region No account found
+            $actionMessage = "updating account"
+        
+            # Throw terminal error
+            throw "No account found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
+            #endregion No account found
+
+            break
+        }
     }
+    #endregion Process
+    #endregion Account
 
     #region Manager
     if ($actionContext.Configuration.updatePrimaryManagerOnUpdate -eq $true) {

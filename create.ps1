@@ -222,6 +222,23 @@ if ($actionContext.Configuration.inviteAsGuest -eq $true) {
 #endRegion guestInvite
 
 try {
+    #region Verify correlation configuration and properties
+    $actionMessage = "verifying correlation configuration and properties"
+
+    if ($actionContext.CorrelationConfiguration.Enabled -eq $true) {
+        if ([string]::IsNullOrEmpty($correlationField)) {
+            throw "Correlation is enabled but not configured correctly."
+        }
+    
+        if ([string]::IsNullOrEmpty($correlationValue)) {
+            throw "The correlation value for [$correlationField] is empty. This is likely a mapping issue."
+        }
+    }
+    else {
+        Write-Warning "Correlation is disabled."
+    }
+    #endregion Verify correlation configuration and properties
+
     #region Create authorization headers
     $actionMessage = "creating authorization headers"
 
@@ -236,62 +253,34 @@ try {
     Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
     #endregion Create authorization headers
 
-    #region Verify correlation configuration and properties
-    $actionMessage = "verifying correlation configuration and properties"
+    #region Get Microsoft Entra ID account
+    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
+    $actionMessage = "querying Microsoft Entra ID account"
 
-
-    if ($actionContext.CorrelationConfiguration.Enabled -eq $true) {
-        if ([string]::IsNullOrEmpty($correlationField)) {
-            throw "Correlation is enabled but not configured correctly."
-        }
-    
-        if ([string]::IsNullOrEmpty($correlationValue)) {
-            throw "The correlation value for [$correlationField] is empty. This is likely a mapping issue."
-        }
-
-        #region Get Microsoft Entra ID account
-        # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-        $actionMessage = "querying Microsoft Entra ID account"
-
-        $baseUri = "https://graph.microsoft.com/"
-        $getMicrosoftEntraIDAccountSplatParams = @{
-            Uri         = "$($baseUri)/v1.0/users?`$filter=$correlationField eq '$correlationValue'&`$select=$($accountPropertiesToQuery -join ',')"
-            Headers     = $headers
-            Method      = "GET"
-            Verbose     = $false
-            ErrorAction = "Stop"
-        }
-        $currentMicrosoftEntraIDAccount = $null
-        $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
+    $baseUri = "https://graph.microsoft.com/"
+    $getMicrosoftEntraIDAccountSplatParams = @{
+        Uri         = "$($baseUri)/v1.0/users?`$filter=$correlationField eq '$correlationValue'&`$select=$($accountPropertiesToQuery -join ',')"
+        Headers     = $headers
+        Method      = "GET"
+        Verbose     = $false
+        ErrorAction = "Stop"
+    }
+    $currentMicrosoftEntraIDAccount = $null
+    $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
         
-        Write-Verbose "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
-        #endregion Get Microsoft Entra ID account
-    }
-    else {
-        if ($actionContext.Configuration.correlateOnly -eq $true) {
-            throw "Correlation is disabled while configuration option [correlateOnly] is toggled."
-        }
-        else {
-            Write-Warning "Correlation is disabled."
-        }
-    }
-    #endregion Verify correlation configuration and properties
+    Write-Verbose "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
+    #endregion Get Microsoft Entra ID account
 
     #region Account
     #region Calulate action
     $actionMessage = "calculating action"
     if (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 0) {
-        if ($actionContext.Configuration.correlateOnly -eq $true) {
-            $actionAccount = "NotFound"
+        $actionAccount = "Create"
+        if ($actionContext.Configuration.inviteAsGuest -eq $true) {
+            $actionAccountCreate = "GuestInvite"
         }
         else {
-            $actionAccount = "Create"
-            if ($actionContext.Configuration.inviteAsGuest -eq $true) {
-                $actionAccountCreate = "GuestInvite"
-            }
-            else {
-                $actionAccountCreate = "Create"
-            }
+            $actionAccountCreate = "Create"
         }
     }
     elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 1) {
@@ -628,17 +617,6 @@ try {
             # Throw terminal error
             throw "Multiple accounts found where [$($correlationField)] = [$($correlationValue)]. Please correct this so the persons are unique."
             #endregion Multiple accounts found
-
-            break
-        }
-
-        "NotFound" {
-            #region No account found
-            $actionMessage = "correlating to account"
-        
-            # Throw terminal error
-            throw "No account found where [$($correlationField)] = [$($correlationValue)] while configuration option [correlateOnly] is toggled."
-            #endregion No account found
 
             break
         }
