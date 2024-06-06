@@ -175,12 +175,12 @@ $fieldsToCheck = [PSCustomObject]@{
     "userPrincipalName" = [PSCustomObject]@{
         accountValue   = $actionContext.Data.userPrincipalName
         keepInSyncWith = @("mail", "mailNickname") # The properties to keep in sync with, if one of these properties isn't unique, this property wil be treated as not unique as well
-        crossCheckOn   = @("userPrincipalName", "mailNickname") # The properties to keep in cross-check on
+        crossCheckOn   = @("mail") # The properties to keep in cross-check on
     }
     "mail"              = [PSCustomObject]@{ # This is the value that is returned to HelloID in NonUniqueFields
         accountValue   = $actionContext.Data.mail
         keepInSyncWith = @("userPrincipalName", "mailNickname") # The properties to keep in sync with, if one of these properties isn't unique, this property wil be treated as not unique as well
-        crossCheckOn   = @("userPrincipalName", "mailNickname") # The properties to keep in cross-check on
+        crossCheckOn   = @("userPrincipalName") # The properties to keep in cross-check on
     }
     "mailNickname"      = [PSCustomObject]@{ # This is the value that is returned to HelloID in NonUniqueFields
         accountValue   = $actionContext.Data.mailNickname
