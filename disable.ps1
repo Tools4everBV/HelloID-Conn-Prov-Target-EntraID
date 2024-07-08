@@ -216,7 +216,7 @@ try {
 
     $headers = New-AuthorizationHeaders @authorizationHeadersSplatParams
 
-    Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
+    Write-Verbose "Created authorization headers."
     #endregion Create authorization headers
 
     #region Get Microsoft Entra ID account
@@ -234,7 +234,7 @@ try {
     $currentMicrosoftEntraIDAccount = $null
     $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
 
-    Write-Verbose "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
+    Write-Information "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
     #endregion Get Microsoft Entra ID account
 
     #region Account
@@ -286,6 +286,8 @@ try {
     elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 0) {
         $actionAccount = "NotFound"
     }
+
+    Write-Information "Check if current account can be found. Result: $actionAccount"
     #endregion Calulate action
 
     #region Process
@@ -306,35 +308,39 @@ try {
 
             foreach ($accountNewProperty in $accountNewProperties) {
                 $accountChangedPropertiesObject.NewValues.$($accountNewProperty.Name) = $accountNewProperty.Value
-            }
-
-            $baseUri = "https://graph.microsoft.com/"
-
-            # Set output data with current account data
-            $outputContext.Data = $currentMicrosoftEntraIDAccount
-
-            # Update account with updated fields
-            $updateAccountBody = @{}
-            foreach ($accountNewProperty in $accountNewProperties) {
-                [void]$updateAccountBody.Add($accountNewProperty.Name, $accountNewProperty.Value)
 
                 # Update output data with new account data
                 $outputContext.Data | Add-Member -MemberType NoteProperty -Name $accountNewProperty.Name -Value $accountNewProperty.Value -Force
             }
 
+            $baseUri = "https://graph.microsoft.com/"
+
+            # Update account with updated fields
+            $updateAccountBody = @{}
+            foreach ($accountNewProperty in $accountNewProperties) {
+                [void]$updateAccountBody.Add($accountNewProperty.Name, $accountNewProperty.Value)
+            }
+
             $updateAccountSplatParams = @{
                 Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)"
-                Headers     = $headers
+                # Headers     = $headers
                 Method      = "PATCH"
                 Body        = ($updateAccountBody | ConvertTo-Json -Depth 10)
+                ContentType = 'application/json; charset=utf-8'
                 Verbose     = $false
                 ErrorAction = "Stop"
             }
 
+            Write-Verbose "SplatParams: $($updateAccountSplatParams | ConvertTo-Json)"
+
             if (-Not($actionContext.DryRun -eq $true)) {
-                Write-Verbose "SplatParams: $($updateAccountSplatParams | ConvertTo-Json)"
+                # Add header after printing splat
+                $updateAccountSplatParams['Headers'] = $headers
 
                 $updatedAccount = Invoke-RestMethod @updateAccountSplatParams
+
+                # The updated account record is not returned by EntraID. So we use the field mapping
+                $outputContext.Data = $actionContext.Data
 
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
@@ -343,7 +349,7 @@ try {
                     })
             }
             else {
-                Write-Warning "DryRun: Would update account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+                Write-Warning "DryRun: Would update account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old values: $($accountChangedPropertiesObject.oldValues | ConvertTo-Json). New values: $($accountChangedPropertiesObject.newValues | ConvertTo-Json)"
             }
             #endregion Update account
 

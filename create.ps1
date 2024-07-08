@@ -250,7 +250,7 @@ try {
 
     $headers = New-AuthorizationHeaders @authorizationHeadersSplatParams
 
-    Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
+    Write-Verbose "Created authorization headers."
     #endregion Create authorization headers
 
     #region Get Microsoft Entra ID account
@@ -268,7 +268,7 @@ try {
     $currentMicrosoftEntraIDAccount = $null
     $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
         
-    Write-Verbose "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
+    Write-Information "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
     #endregion Get Microsoft Entra ID account
 
     #region Account
@@ -289,6 +289,8 @@ try {
     elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -gt 1) {
         $actionAccount = "MultipleFound"
     }
+
+    Write-Information "Check if current account can be found. Result: $actionAccount"
     #endregion Calulate action
     
     #region Process
@@ -310,17 +312,26 @@ try {
 
                     $createAccountSplatParams = @{
                         Uri         = "$($baseUri)/v1.0/users"
-                        Headers     = $headers
+                        # Headers     = $headers
                         Method      = "POST"
                         Body        = ($createAccountBody | ConvertTo-Json -Depth 10)
+                        ContentType = 'application/json; charset=utf-8'
                         Verbose     = $false
                         ErrorAction = "Stop"
                     }
 
+                    Write-Verbose "SplatParams: $($createAccountSplatParams | ConvertTo-Json)"
+
                     if (-Not($actionContext.DryRun -eq $true)) {
-                        Write-Verbose "SplatParams: $($createAccountSplatParams | ConvertTo-Json)"
+                        # Add header after printing splat
+                        $createAccountSplatParams['Headers'] = $headers
 
                         $createdAccount = Invoke-RestMethod @createAccountSplatParams
+
+                        write-warning "createdAccount $($createdAccount | Convertto-json)"
+
+                        # The created account record is not compleet. So we use the field mapping
+                        $outputContext.Data = $actionContext.Data
 
                         #region Set AccountReference and add AccountReference to Data
                         $outputContext.AccountReference = "$($createdAccount.id)"
@@ -351,15 +362,19 @@ try {
 
                     $createInvitationSplatParams = @{
                         Uri         = "$($baseUri)/v1.0/invitations"
-                        Headers     = $headers
+                        # Headers     = $headers
                         Method      = "POST"
                         Body        = ($createInvitationBody | ConvertTo-Json -Depth 10)
+                        ContentType = 'application/json; charset=utf-8'
                         Verbose     = $false
                         ErrorAction = "Stop"
                     }
 
+                    Write-Verbose "SplatParams: $($createInvitationSplatParams | ConvertTo-Json)"
+
                     if (-Not($actionContext.DryRun -eq $true)) {
-                        Write-Verbose "SplatParams: $($createInvitationSplatParams | ConvertTo-Json)"
+                        # Add header after printing splat
+                        $createInvitationSplatParams['Headers'] = $headers
 
                         $createdInvitation = Invoke-RestMethod @createInvitationSplatParams
 
@@ -396,15 +411,19 @@ try {
 
             $updateAccountSplatParams = @{
                 Uri         = "$($baseUri)/v1.0/users/$($outputContext.AccountReference)"
-                Headers     = $headers
+                # Headers     = $headers
                 Method      = "PATCH"
                 Body        = ($updateAccountBody | ConvertTo-Json -Depth 10)
+                ContentType = 'application/json; charset=utf-8'
                 Verbose     = $false
                 ErrorAction = "Stop"
             }
 
+            Write-Verbose "SplatParams: $($updateAccountSplatParams | ConvertTo-Json)"
+
             if (-Not($actionContext.DryRun -eq $true)) {
-                Write-Verbose "SplatParams: $($updateAccountSplatParams | ConvertTo-Json)"
+                # Add header after printing splat
+                $updateAccountSplatParams['Headers'] = $headers
 
                 $updatedAccount = Invoke-RestMethod @updateAccountSplatParams
 
@@ -516,20 +535,25 @@ try {
 
                         $setManagerSplatParams = @{
                             Uri         = "$($baseUri)/v1.0/users/$($outputContext.AccountReference)/manager/`$ref"
-                            Headers     = $headers
+                            # Headers     = $headers
                             Method      = "PUT"
                             Body        = ($setManagerBody | ConvertTo-Json -Depth 10)
                             Verbose     = $false
                             ErrorAction = "Stop"
                         }
 
+                        Write-Verbose "SplatParams: $($setManagerSplatParams | ConvertTo-Json)"
+
                         if (-Not($actionContext.DryRun -eq $true)) {
-                            Write-Verbose "SplatParams: $($setManagerSplatParams | ConvertTo-Json)"
+                            # Add header after printing splat
+                            $setManagerSplatParams['Headers'] = $headers
 
                             $setManager = Invoke-RestMethod @setManagerSplatParams
 
-                            #region Add Manager AccountReference to Data
-                            $outputContext.Data.manager.id = "$($currentMicrosoftEntraIDManagerAccountId)"
+                            #region Add Manager AccountReference to Data if exists in fieldmapping
+                            if ($actionContext.Data.manager.PSObject.Properties.Name -contains 'id') {
+                                $outputContext.Data.manager.id = "$($currentMicrosoftEntraIDManagerAccountId)"
+                            }
                             #endregion Add Manager AccountReference to Data
 
                             $outputContext.AuditLogs.Add([PSCustomObject]@{
@@ -656,4 +680,6 @@ finally {
     if ([String]::IsNullOrEmpty($outputContext.AccountReference) -and $actionContext.DryRun -eq $true) {
         $outputContext.AccountReference = "DryRun: Currently not available"
     }
+
+    write-warning "outputContext [$($outputContext | ConvertTo-Json)]"
 }

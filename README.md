@@ -41,6 +41,17 @@
 - This connector provides the functionality to create Guest accounts through invitation, allowing users to log in using their invited email addresses. This feature can be enabled or disabled using the "Invite as Guest" option.
 If direct creation of Microsoft Entra ID Guest accounts (with login names under the tenant domain) is preferred, ensure that the "Invite as Guest" option is not enabled.
 By specifying the userType as 'Guest' in the mapping, Guest accounts with login names under the tenant domain can be effortlessly created.
+- The script filters out all field mapping with the value $null. All field mapping to none is filtered out this way. But if the value on the person model of HelloID is $null this value is also filtered out. If this is not required please change the mapping to complex and make sure you return an empty string when the value is $null. Then the value is correctly handled by the script. Example:
+  - ```JavaScript
+    function getCompanyName() {
+      let getCompanyName = Person.PrimaryContract.Employer.Name;
+      if (Person.PrimaryContract.Employer.Name === null) {
+          getCompanyName = ' ';
+      }
+      return getCompanyName;
+    }
+    getCompanyName();
+    ```
 
 ## Introduction
 _HelloID-Conn-Prov-Target-Microsoft-Entra-ID_ is a _target_ connector. _Microsoft_ provides a set of REST API's that allow you to programmatically interact with its data. The Microsoft Entra ID connector uses the API endpoints listed in the table below.

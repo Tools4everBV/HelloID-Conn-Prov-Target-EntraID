@@ -195,7 +195,7 @@ try {
 
     $headers = New-AuthorizationHeaders @authorizationHeadersSplatParams
 
-    Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
+    Write-Verbose "Created authorization headers."
     #endregion Create authorization headers
 
     #region Get Microsoft Entra ID account
@@ -213,7 +213,7 @@ try {
     $currentMicrosoftEntraIDAccount = $null
     $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
 
-    Write-Verbose "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
+    Write-Information "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
     #endregion Get Microsoft Entra ID account
 
     #region Account
@@ -228,6 +228,8 @@ try {
     elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 0) {
         $actionAccount = "NotFound"
     }
+
+    Write-Information "Check if current account can be found. Result: $actionAccount"
     #endregion Calulate action
 
     #region Process
@@ -240,15 +242,18 @@ try {
 
             $deleteAccountSplatParams = @{
                 Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)"
-                Headers     = $headers
+                # Headers     = $headers
                 Method      = "DELETE"
                 Verbose     = $false
                 ErrorAction = "Stop"
             }
 
-            if (-Not($actionContext.DryRun -eq $true)) {
-                Write-Verbose "Deleting account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). SplatParams: $($deleteAccountSplatParams | ConvertTo-Json)"
+            Write-Verbose "Deleting account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). SplatParams: $($deleteAccountSplatParams | ConvertTo-Json)"
 
+            if (-Not($actionContext.DryRun -eq $true)) {
+                # Add header after printing splat
+                $deleteAccountSplatParams['Headers'] = $headers
+                
                 $deletedAccount = Invoke-RestMethod @deleteAccountSplatParams
 
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
