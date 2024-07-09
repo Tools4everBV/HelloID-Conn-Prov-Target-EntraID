@@ -680,6 +680,4 @@ finally {
     if ([String]::IsNullOrEmpty($outputContext.AccountReference) -and $actionContext.DryRun -eq $true) {
         $outputContext.AccountReference = "DryRun: Currently not available"
     }
-
-    write-warning "outputContext [$($outputContext | ConvertTo-Json)]"
 }

@@ -254,6 +254,7 @@ try {
 
         # Set Previous data (if there are no changes between PreviousData and Data, HelloID will log "update finished with no changes")
         $outputContext.PreviousData = $currentMicrosoftEntraIDAccount
+
         # Create reference object from correlated account
         $accountReferenceObject = [PSCustomObject]@{}
         foreach ($currentMicrosoftEntraIDAccountProperty in ($currentMicrosoftEntraIDAccount | Get-Member -MemberType NoteProperty)) {
@@ -611,5 +612,5 @@ finally {
     }
     else {
         $outputContext.Success = $true
-    }
+    } 
 }

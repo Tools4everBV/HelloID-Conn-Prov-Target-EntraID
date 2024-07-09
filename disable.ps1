@@ -308,17 +308,20 @@ try {
 
             foreach ($accountNewProperty in $accountNewProperties) {
                 $accountChangedPropertiesObject.NewValues.$($accountNewProperty.Name) = $accountNewProperty.Value
-
-                # Update output data with new account data
-                $outputContext.Data | Add-Member -MemberType NoteProperty -Name $accountNewProperty.Name -Value $accountNewProperty.Value -Force
             }
 
             $baseUri = "https://graph.microsoft.com/"
+
+            # Set output data with current account data
+            $outputContext.Data = $currentMicrosoftEntraIDAccount
 
             # Update account with updated fields
             $updateAccountBody = @{}
             foreach ($accountNewProperty in $accountNewProperties) {
                 [void]$updateAccountBody.Add($accountNewProperty.Name, $accountNewProperty.Value)
+                
+                # Update output data with new account data
+                $outputContext.Data | Add-Member -MemberType NoteProperty -Name $accountNewProperty.Name -Value $accountNewProperty.Value -Force
             }
 
             $updateAccountSplatParams = @{
@@ -338,9 +341,6 @@ try {
                 $updateAccountSplatParams['Headers'] = $headers
 
                 $updatedAccount = Invoke-RestMethod @updateAccountSplatParams
-
-                # The updated account record is not returned by EntraID. So we use the field mapping
-                $outputContext.Data = $actionContext.Data
 
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
