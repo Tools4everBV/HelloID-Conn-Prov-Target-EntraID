@@ -24,6 +24,8 @@
     - [Application Registration](#application-registration)
     - [Configuring App Permissions](#configuring-app-permissions)
     - [Authentication and Authorization](#authentication-and-authorization)
+    - [Remarks](#remarks-1)
+      - [Limited attributes in the create action](#limited-attributes-in-the-create-action)
   - [Getting help](#getting-help)
   - [HelloID docs](#helloid-docs)
 
@@ -124,11 +126,15 @@ To properly setup the correlation:
 
 2. Specify the following configuration:
 
-    | Setting                   | Value      |
-    | ------------------------- | ---------- |
-    | Enable correlation        | `True`     |
-    | Person correlation field  | ``         |
-    | Account correlation field | `UserName` |
+    | Setting                   | Value                             |
+    | ------------------------- | --------------------------------- |
+    | Enable correlation        | `True`                            |
+    | Person correlation field  | `PersonContext.Person.ExternalId` |
+    | Account correlation field | `employeeId`                      |
+
+> [!IMPORTANT]
+> The account correlation field is added to the create action. If you use a different value then `employeeId`, please make sure this is support by the [graph api](https://learn.microsoft.com/en-us/graph/api/user-post-users?view=graph-rest-1.0&tabs=http)
+
 
 > [!TIP]
 > _For more information on correlation, please refer to our correlation [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems/correlation.html) pages_.
@@ -189,6 +195,11 @@ There are multiple ways to authenticate to the Graph API with each has its own p
 -	Provide a logical name for your secret in the Description field, and select the expiration date for your secret.
 -	It's IMPORTANT to copy the newly generated client secret, because you cannot see the value anymore after you close the page.
 -	At last we need to get the **Tenant ID**. This can be found in the Microsoft Entra ID Portal by going to **Microsoft Entra ID > Overview**.
+
+### Remarks
+
+#### Limited attributes in the create action
+The create account in the [graph api](https://learn.microsoft.com/en-us/graph/api/user-post-users?view=graph-rest-1.0&tabs=http) is limited. For that reason, the account is updated after it is created. This could result in an account that is created without all attributes. Because the correlation value is mandatory HelloID can correlate the account when retrying the action.
 
 ## Getting help
 > [!TIP]

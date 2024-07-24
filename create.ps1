@@ -304,7 +304,7 @@ try {
                     $baseUri = "https://graph.microsoft.com/"
 
                     # Create account with only required fields
-                    $requiredFields = @("accountEnabled", "displayName", "mailNickname", "passwordProfile", "userPrincipalName")
+                    $requiredFields = @("accountEnabled", "displayName", "mailNickname", "passwordProfile", "userPrincipalName", "$correlationField")
                     $createAccountBody = @{}
                     foreach ($accountProperty in $account.PsObject.Properties | Where-Object { $null -ne $_.Value -and $_.Name -in $requiredFields }) {
                         [void]$createAccountBody.Add($accountProperty.Name, $accountProperty.Value)
@@ -327,8 +327,6 @@ try {
                         $createAccountSplatParams['Headers'] = $headers
 
                         $createdAccount = Invoke-RestMethod @createAccountSplatParams
-
-                        write-warning "createdAccount $($createdAccount | Convertto-json)"
 
                         # The created account record is not compleet. So we use the field mapping
                         $outputContext.Data = $actionContext.Data
