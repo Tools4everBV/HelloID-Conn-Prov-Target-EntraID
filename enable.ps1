@@ -312,8 +312,8 @@ try {
 
             $baseUri = "https://graph.microsoft.com/"
 
-            # Set output data with current account data
-            $outputContext.Data = $currentMicrosoftEntraIDAccount
+            # Convert Array to PsCustomObject
+            $outputContextDataOutput = $currentMicrosoftEntraIDAccount | ConvertTo-Json | ConvertFrom-Json
 
             # Update account with updated fields
             $updateAccountBody = @{}
@@ -321,8 +321,11 @@ try {
                 [void]$updateAccountBody.Add($accountNewProperty.Name, $accountNewProperty.Value)
 
                 # Update output data with new account data
-                $outputContext.Data | Add-Member -MemberType NoteProperty -Name $accountNewProperty.Name -Value $accountNewProperty.Value -Force
+                $outputContextDataOutput.$($accountNewProperty.Name) = $accountNewProperty.Value
             }
+
+            # Set updated outputContext data
+            $outputContext.Data = $outputContextDataOutput
 
             $updateAccountSplatParams = @{
                 Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)"
