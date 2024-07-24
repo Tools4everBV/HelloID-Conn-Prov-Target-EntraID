@@ -524,12 +524,6 @@ try {
     
                     $setManager = Invoke-RestMethod @setManagerSplatParams
     
-                    #region Add Manager AccountReference to Data
-                    if ($actionContext.Data.manager.PSObject.Properties.Name -contains 'id') {
-                        $outputContext.Data.manager.id = "$($currentMicrosoftEntraIDManagerAccountId)"
-                    }
-                    #endregion Add Manager AccountReference to Data
-    
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
                             # Action  = "" # Optional
                             Message = "Updated manager with [$($currentMicrosoftEntraIDManagerAccountId)] for account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json). Old value: $($previousMicrosoftEntraIDManagerAccountId | ConvertTo-Json). New value: $($currentMicrosoftEntraIDManagerAccountId | ConvertTo-Json)"

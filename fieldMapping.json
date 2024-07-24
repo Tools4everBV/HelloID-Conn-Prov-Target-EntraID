@@ -496,23 +496,6 @@
       ]
     },
     {
-      "Name": "manager.id",
-      "Description": "",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "None",
-          "Value": "\"\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": true
-        }
-      ]
-    },
-    {
       "Name": "officeLocation",
       "Description": "The office location in the user's place of business.",
       "Type": "Text",

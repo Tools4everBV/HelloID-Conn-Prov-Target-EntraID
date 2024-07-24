@@ -171,7 +171,7 @@ function Resolve-HTTPError {
 #endregion functions
 
 try {
-#region account
+    #region account
     # Define correlation
     $correlationField = $actionContext.CorrelationConfiguration.accountField
     $correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
@@ -549,12 +549,6 @@ try {
                             $setManagerSplatParams['Headers'] = $headers
 
                             $setManager = Invoke-RestMethod @setManagerSplatParams
-
-                            #region Add Manager AccountReference to Data if exists in fieldmapping
-                            if ($actionContext.Data.manager.PSObject.Properties.Name -contains 'id') {
-                                $outputContext.Data.manager.id = "$($currentMicrosoftEntraIDManagerAccountId)"
-                            }
-                            #endregion Add Manager AccountReference to Data
 
                             $outputContext.AuditLogs.Add([PSCustomObject]@{
                                     # Action  = "" # Optional
