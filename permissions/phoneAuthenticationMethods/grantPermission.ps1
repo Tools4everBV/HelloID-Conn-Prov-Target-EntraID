@@ -170,54 +170,54 @@ function Resolve-HTTPError {
 }
 #endregion functions
 
-#region phoneAuthenticationMethod
-# Define phonenumber
-switch ($actionContext.References.Permission.Name) {
-    "mobile" {
-        $phoneNumber = $personContext.Person.Contact.Business.Phone.Mobile
-
-        break
-    }
-
-    "alternateMobile" {
-        $phoneNumber = $personContext.Person.Contact.Business.Phone.Fixed
-
-        break
-    }
-
-    "office" {
-        $phoneNumber = $personContext.Person.Contact.Personal.Phone.Mobile
-
-        break
-    }
-}
-
-# Formate phoneNumber to supported format
-if ($null -ne $phoneNumber -and $phoneNumber) {
-    # Remove spaces and -
-    $phoneNumber = $phoneNumber -replace "-", "" -replace "\s", ""
-
-    # Replace 06 with +316
-    if ($phoneNumber.StartsWith("06")) {
-        $phoneNumber = "+316" + $phoneNumber.Substring(2)
-        # Replace 0031 with +31
-    }
-    elseif ($phoneNumber.StartsWith("0031")) {
-        $phoneNumber = "+31" + $phoneNumber.Substring(4)
-        # Replace 00 with +
-    }
-    elseif ($phoneNumber.StartsWith("00")) {
-        $phoneNumber = "+" + $phoneNumber.Substring(2)
-    }
-
-    # Make sure it starts with +
-    if (-not $phoneNumber.StartsWith("+")) {
-        $phoneNumber = "+" + $phoneNumber
-    }
-}
-#endRegion phoneAuthenticationMethod
-
 try {
+    #region phoneAuthenticationMethod
+    # Define phonenumber
+    switch ($actionContext.References.Permission.Name) {
+        "mobile" {
+            $phoneNumber = $personContext.Person.Contact.Business.Phone.Mobile
+
+            break
+        }
+
+        "alternateMobile" {
+            $phoneNumber = $personContext.Person.Contact.Business.Phone.Fixed
+
+            break
+        }
+
+        "office" {
+            $phoneNumber = $personContext.Person.Contact.Personal.Phone.Mobile
+
+            break
+        }
+    }
+
+    # Formate phoneNumber to supported format
+    if ($null -ne $phoneNumber -and $phoneNumber) {
+        # Remove spaces and -
+        $phoneNumber = $phoneNumber -replace "-", "" -replace "\s", ""
+
+        # Replace 06 with +316
+        if ($phoneNumber.StartsWith("06")) {
+            $phoneNumber = "+316" + $phoneNumber.Substring(2)
+            # Replace 0031 with +31
+        }
+        elseif ($phoneNumber.StartsWith("0031")) {
+            $phoneNumber = "+31" + $phoneNumber.Substring(4)
+            # Replace 00 with +
+        }
+        elseif ($phoneNumber.StartsWith("00")) {
+            $phoneNumber = "+" + $phoneNumber.Substring(2)
+        }
+
+        # Make sure it starts with +
+        if (-not $phoneNumber.StartsWith("+")) {
+            $phoneNumber = "+" + $phoneNumber
+        }
+    }
+    #endRegion phoneAuthenticationMethod
+
     #region Verify account reference and required properties
     $actionMessage = "verifying account reference and required properties"
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {

@@ -207,18 +207,17 @@ function Resolve-HTTPError {
 #endregion functions
 
 #region group
-# Make sure the resourceContext data is unique. Fill in the required fields after -unique
-# Example: department
-$resourceData = $resourceContext.SourceData | Select-Object -Unique ExternalId, DisplayName
-# Example: title
-# $resourceData = $resourceContext.SourceData | Select-Object -Unique ExternalId, Name
-# Define correlation
-$correlationField = "displayName"
-$correlationValue = "" # Defined later in script
-#endRegion group
-
-#region Get Access Token
 try {
+    # Make sure the resourceContext data is unique. Fill in the required fields after -unique
+    # Example: department
+    $resourceData = $resourceContext.SourceData | Select-Object -Unique ExternalId, DisplayName
+    # Example: title
+    # $resourceData = $resourceContext.SourceData | Select-Object -Unique ExternalId, Name
+    # Define correlation
+    $correlationField = "displayName"
+    $correlationValue = "" # Defined later in script
+    #endRegion group
+
     #region Create authorization headers
     $actionMessage = "creating authorization headers"
 

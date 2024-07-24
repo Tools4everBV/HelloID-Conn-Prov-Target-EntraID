@@ -143,19 +143,19 @@ function Resolve-HTTPError {
 }
 #endregion functions
 
-#region account
-# Define correlation
-$correlationField = $actionContext.CorrelationConfiguration.accountField
-$correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
-
-# Define account object
-$account = [PSCustomObject]$actionContext.Data
-
-# Define properties to query
-$accountPropertiesToQuery = @("id") + $account.PsObject.Properties.Name | Select-Object -Unique
-#endRegion account
-
 try {
+    #region account
+    # Define correlation
+    $correlationField = $actionContext.CorrelationConfiguration.accountField
+    $correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
+
+    # Define account object
+    $account = [PSCustomObject]$actionContext.Data
+
+    # Define properties to query
+    $accountPropertiesToQuery = @("id") + $account.PsObject.Properties.Name | Select-Object -Unique
+    #endRegion account
+
     #region Verify correlation configuration and properties
     $actionMessage = "verifying correlation configuration and properties"
 

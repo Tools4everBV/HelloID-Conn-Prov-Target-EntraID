@@ -170,58 +170,58 @@ function Resolve-HTTPError {
 }
 #endregion functions
 
+try {
 #region account
-# Define correlation
-$correlationField = $actionContext.CorrelationConfiguration.accountField
-$correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
-
-# Define account object
-$account = [PSCustomObject]$actionContext.Data
-# Remove properties phoneAuthenticationMethod, emailAuthenticationMethod and manager as they are set within seperate actions
-$account = $account | Select-Object -ExcludeProperty phoneAuthenticationMethod, emailAuthenticationMethod, manager
-
-# Define properties to query
-$accountPropertiesToQuery = @("id") + $account.PsObject.Properties.Name | Select-Object -Unique
-
-# Remove properties of account object with null-values
-$account.PsObject.Properties | ForEach-Object {
-    # Remove properties with null-values
-    if ($_.Value -eq $null) {
-        $account.PsObject.Properties.Remove("$($_.Name)")
-    }
-}
-# Convert the properties of account object containing "TRUE" or "FALSE" to boolean 
-$account = Convert-StringToBoolean $account
-#endRegion account
-
-#region manager account
-if ($actionContext.Configuration.setPrimaryManagerOnCreate -eq $true) {
     # Define correlation
-    $managerCorrelationField = "employeeId"
-    $managerCorrelationValue = $personContext.Manager.ExternalId
+    $correlationField = $actionContext.CorrelationConfiguration.accountField
+    $correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
+
+    # Define account object
+    $account = [PSCustomObject]$actionContext.Data
+    # Remove properties phoneAuthenticationMethod, emailAuthenticationMethod and manager as they are set within seperate actions
+    $account = $account | Select-Object -ExcludeProperty phoneAuthenticationMethod, emailAuthenticationMethod, manager
 
     # Define properties to query
-    $managerAccountPropertiesToQuery = @("id")
-}
-#endRegion manager account
+    $accountPropertiesToQuery = @("id") + $account.PsObject.Properties.Name | Select-Object -Unique
 
-#region guestInvite
-if ($actionContext.Configuration.inviteAsGuest -eq $true) {
-    # Define correlation
-    $guestInviteAccount = [PSCustomObject]$actionContext.Data.guestInvite
-    # Remove properties with null-values
-    $guestInviteAccount.PsObject.Properties | ForEach-Object {
+    # Remove properties of account object with null-values
+    $account.PsObject.Properties | ForEach-Object {
         # Remove properties with null-values
         if ($_.Value -eq $null) {
-            $guestInviteAccount.PsObject.Properties.Remove("$($_.Name)")
+            $account.PsObject.Properties.Remove("$($_.Name)")
         }
     }
-    # Convert the properties containing "TRUE" or "FALSE" to boolean
-    $guestInviteAccount = Convert-StringToBoolean $guestInviteAccount
-}
-#endRegion guestInvite
+    # Convert the properties of account object containing "TRUE" or "FALSE" to boolean 
+    $account = Convert-StringToBoolean $account
+    #endRegion account
 
-try {
+    #region manager account
+    if ($actionContext.Configuration.setPrimaryManagerOnCreate -eq $true) {
+        # Define correlation
+        $managerCorrelationField = "employeeId"
+        $managerCorrelationValue = $personContext.Manager.ExternalId
+
+        # Define properties to query
+        $managerAccountPropertiesToQuery = @("id")
+    }
+    #endRegion manager account
+
+    #region guestInvite
+    if ($actionContext.Configuration.inviteAsGuest -eq $true) {
+        # Define correlation
+        $guestInviteAccount = [PSCustomObject]$actionContext.Data.guestInvite
+        # Remove properties with null-values
+        $guestInviteAccount.PsObject.Properties | ForEach-Object {
+            # Remove properties with null-values
+            if ($_.Value -eq $null) {
+                $guestInviteAccount.PsObject.Properties.Remove("$($_.Name)")
+            }
+        }
+        # Convert the properties containing "TRUE" or "FALSE" to boolean
+        $guestInviteAccount = Convert-StringToBoolean $guestInviteAccount
+    }
+    #endRegion guestInvite
+
     #region Verify correlation configuration and properties
     $actionMessage = "verifying correlation configuration and properties"
 

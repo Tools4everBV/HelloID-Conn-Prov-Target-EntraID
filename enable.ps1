@@ -170,34 +170,34 @@ function Resolve-HTTPError {
 }
 #endregion functions
 
-#region account
-# Define correlation
-$correlationField = "id"
-$correlationValue = $actionContext.References.Account
-
-# Define account object
-$account = [PSCustomObject]$actionContext.Data
-# Remove properties phoneAuthenticationMethod, emailAuthenticationMethod and manager as they are set within seperate actions
-$account = $account | Select-Object -ExcludeProperty phoneAuthenticationMethod, emailAuthenticationMethod, manager
-
-# Define properties to query
-$accountPropertiesToQuery = @("id") + $account.PsObject.Properties.Name | Select-Object -Unique
-
-# Remove properties of account object with null-values
-$account.PsObject.Properties | ForEach-Object {
-    # Remove properties with null-values
-    if ($_.Value -eq $null) {
-        $account.PsObject.Properties.Remove("$($_.Name)")
-    }
-}
-# Convert the properties of account object containing "TRUE" or "FALSE" to boolean 
-$account = Convert-StringToBoolean $account
-
-# Define properties to compare for update
-$accountPropertiesToCompare = $account.PsObject.Properties.Name
-#endRegion account
-
 try {
+    #region account
+    # Define correlation
+    $correlationField = "id"
+    $correlationValue = $actionContext.References.Account
+
+    # Define account object
+    $account = [PSCustomObject]$actionContext.Data
+    # Remove properties phoneAuthenticationMethod, emailAuthenticationMethod and manager as they are set within seperate actions
+    $account = $account | Select-Object -ExcludeProperty phoneAuthenticationMethod, emailAuthenticationMethod, manager
+
+    # Define properties to query
+    $accountPropertiesToQuery = @("id") + $account.PsObject.Properties.Name | Select-Object -Unique
+
+    # Remove properties of account object with null-values
+    $account.PsObject.Properties | ForEach-Object {
+        # Remove properties with null-values
+        if ($_.Value -eq $null) {
+            $account.PsObject.Properties.Remove("$($_.Name)")
+        }
+    }
+    # Convert the properties of account object containing "TRUE" or "FALSE" to boolean 
+    $account = Convert-StringToBoolean $account
+
+    # Define properties to compare for update
+    $accountPropertiesToCompare = $account.PsObject.Properties.Name
+    #endRegion account
+
     #region Verify account reference
     $actionMessage = "verifying account reference"
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {

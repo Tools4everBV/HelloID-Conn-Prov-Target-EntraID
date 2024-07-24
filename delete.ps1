@@ -170,13 +170,13 @@ function Resolve-HTTPError {
 }
 #endregion functions
 
-#region account
-# Define correlation
-$correlationField = "id"
-$correlationValue = $actionContext.References.Account
-#endRegion account
-
 try {
+    #region account
+    # Define correlation
+    $correlationField = "id"
+    $correlationValue = $actionContext.References.Account
+    #endRegion account
+
     #region Verify account reference
     $actionMessage = "verifying account reference"
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {

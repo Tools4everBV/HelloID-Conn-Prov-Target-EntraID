@@ -170,12 +170,12 @@ function Resolve-HTTPError {
 }
 #endregion functions
 
-#region emailAuthenticationMethod
-# Define email
-$email = $personContext.Person.Contact.Personal.Email
-#endRegion emailAuthenticationMethod
-
 try {
+    #region emailAuthenticationMethod
+    # Define email
+    $email = $personContext.Person.Contact.Personal.Email
+    #endRegion emailAuthenticationMethod
+
     #region Verify account reference and required properties
     $actionMessage = "verifying account reference and required properties"
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
