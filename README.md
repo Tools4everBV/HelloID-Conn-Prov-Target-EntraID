@@ -12,48 +12,73 @@
 
 - [HelloID-Conn-Prov-Target-Microsoft-Entra-ID](#helloid-conn-prov-target-microsoft-entra-id)
   - [Table of contents](#table-of-contents)
-  - [Prerequisites](#prerequisites)
+  - [Requirements](#requirements)
   - [Remarks](#remarks)
+    - [Account Creation Limitations](#account-creation-limitations)
+    - [Supported Group Types](#supported-group-types)
+    - [Managing Permissions in Teams](#managing-permissions-in-teams)
+    - [Creating Guest Accounts](#creating-guest-accounts)
+    - [Handling Null Values in Field Mapping](#handling-null-values-in-field-mapping)
+      - [Example:](#example)
   - [Introduction](#introduction)
   - [Getting started](#getting-started)
     - [Provisioning PowerShell V2 connector](#provisioning-powershell-v2-connector)
       - [Correlation configuration](#correlation-configuration)
       - [Field mapping](#field-mapping)
     - [Connection settings](#connection-settings)
-  - [Setup the connector](#setup-the-connector)
+  - [Connector setup](#connector-setup)
     - [Application Registration](#application-registration)
     - [Configuring App Permissions](#configuring-app-permissions)
     - [Authentication and Authorization](#authentication-and-authorization)
-    - [Remarks](#remarks-1)
-      - [Limited attributes in the create action](#limited-attributes-in-the-create-action)
   - [Getting help](#getting-help)
   - [HelloID docs](#helloid-docs)
 
-## Prerequisites
-- [ ] _HelloID_ Provisioning agent (cloud or on-prem).
-- [ ] _HelloID_ environment.
-- [ ] Registered App Registration in Microsoft Entra ID. The following values are needed to connect:
-  - [ ] Tenant ID.
-  - [ ] Client ID.
-  - [ ] Client Secret.
+## Requirements
+1. **HelloID Environment**:
+   - Set up your _HelloID_ environment.
+   - Install the _HelloID_ Service Automation agent (cloud or on-prem).
+1. **Graph API Credentials**:
+   - Create an **App Registration** in Microsoft Entra ID.
+   - Add API permissions for your app:
+     - **Application permissions**:
+       - `User.ReadWrite.All`: Read and write all user’s full profiles.
+       - `Group.ReadWrite.All`: Read and write all groups in an organization’s directory.
+       - `GroupMember.ReadWrite.All`: Read and write all group memberships.
+       - `UserAuthenticationMethod.ReadWrite.All`: Read and write all users’ authentication methods.
+   - Create access credentials for your app:
+     - Create a **client secret** for your app.
 
 ## Remarks
-- The script for dynamically managing permissions in Teams closely resembles that for Groups, with the only distinction being an added filter for Teams-enabled groups. This is because a Team is inherently an M365 group, allowing us to manage its members within the group context rather than within Teams itself.
-- Currently, the [Microsoft Graph API](https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0) exclusively supports Microsoft 365 and Security groups. Consequently, Mail-enabled security groups and Distribution groups cannot be managed via this API. To manage these types of groups, utilize the [Exchange Online connector](https://github.com/Tools4everBV/HelloID-Conn-Prov-Target-ExchangeOnline).
-- This connector provides the functionality to create Guest accounts through invitation, allowing users to log in using their invited email addresses. This feature can be enabled or disabled using the "Invite as Guest" option.
-If direct creation of Microsoft Entra ID Guest accounts (with login names under the tenant domain) is preferred, ensure that the "Invite as Guest" option is not enabled.
-By specifying the userType as 'Guest' in the mapping, Guest accounts with login names under the tenant domain can be effortlessly created.
-- The script filters out all field mapping with the value `$null`. All field mapping to none is filtered out this way. But if the value on the person model of HelloID is `$null` this value is also filtered out. If this is not required please change the mapping to complex and make sure you return an string with a `space` or `empty` when the value is `$null`. Then the value is correctly handled by the script. Example:
-  - ```JavaScript
-    function getCompanyName() {
-      let getCompanyName = Person.PrimaryContract.Employer.Name;
-      if (Person.PrimaryContract.Employer.Name === null) {
-          getCompanyName = ' ';
-      }
-      return getCompanyName;
-    }
-    getCompanyName();
-    ```
+### Account Creation Limitations
+- The [Graph API](https://learn.microsoft.com/en-us/graph/api/user-post-users?view=graph-rest-1.0&tabs=http) has limitations when creating accounts. As a result, accounts may be created without all attributes. Since the correlation value is mandatory, HelloID can correlate the account when retrying the action.
+
+### Supported Group Types
+- The [Microsoft Graph API](https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0) exclusively supports  Microsoft 365 and Security groups. Mail-enabled security groups and Distribution groups cannot be managed via this API. To manage these types of groups, use the [Exchange Online connector](https://github.com/Tools4everBV/HelloID-Conn-Prov-Target-ExchangeOnline).
+
+### Managing Permissions in Teams
+- The script for dynamically managing permissions in Teams is similar to that for Groups, with an added filter for Teams-enabled groups. This is because a Team is inherently an M365 group, allowing us to manage its members within the group context rather than within Teams itself.
+
+
+### Creating Guest Accounts
+- This connector allows the creation of Guest accounts through invitation, enabling users to log in using their invited email addresses. This feature can be enabled or disabled using the "Invite as Guest" option.
+- If direct creation of Microsoft Entra ID Guest accounts (with login names under the tenant domain) is preferred, ensure that the "Invite as Guest" option is not enabled.
+- By specifying the `userType` as 'Guest' in the mapping, Guest accounts with login names under the tenant domain can be created effortlessly.
+
+### Handling Null Values in Field Mapping
+
+- The script filters out all field mappings with the value `$null`. If the value in the HelloID person model is `$null`, it is also filtered out. If this behavior is not desired, change the mapping to complex and ensure you return a string with a `space` or `empty` when the value is `$null`. This way, the value is correctly handled by the script.
+
+#### Example:
+```javascript
+function getCompanyName() {
+  let companyName = Person.PrimaryContract.Employer.Name;
+  if (companyName === null) {
+    companyName = ' ';
+  }
+  return companyName;
+}
+getCompanyName();
+```
 
 ## Introduction
 _HelloID-Conn-Prov-Target-Microsoft-Entra-ID_ is a _target_ connector. _Microsoft_ provides a set of REST API's that allow you to programmatically interact with its data. The Microsoft Entra ID connector uses the API endpoints listed in the table below.
@@ -111,9 +136,9 @@ By using this connector you will have the ability to seamlessly create and user 
 Connecting to Microsoft the Microsoft Graph API is straightforward. Simply utilize the API Key and API Secret pair.
 For further details, refer to the following pages in the Microsoft Docs:
 
-[Use the Microsoft Graph API](https://learn.microsoft.com/en-us/graph/use-the-api).
-[User Properties](https://learn.microsoft.com/en-us/graph/api/resources/user?view=graph-rest-1.0#properties).
-[Supported User Properties for Correlation](https://learn.microsoft.com/en-us/graph/aad-advanced-queries?tabs=http#user-properties).
+- [Use the Microsoft Graph API](https://learn.microsoft.com/en-us/graph/use-the-api).
+- [User Properties](https://learn.microsoft.com/en-us/graph/api/resources/user?view=graph-rest-1.0#properties).
+- [Supported User Properties for Correlation](https://learn.microsoft.com/en-us/graph/aad-advanced-queries?tabs=http#user-properties).
 
 ### Provisioning PowerShell V2 connector
 
@@ -145,61 +170,81 @@ The field mapping can be imported by using the _fieldMapping.json_ file.
 ### Connection settings
 The following settings are required to connect to the API.
 
-| Setting                                  | Description                                                                                                                  | Mandatory |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------- |
-| App Registration Directory (tenant) ID   | The ID to the Tenant in Microsoft Entra ID                                                                                   | Yes       |
-| App Registration Application (client) ID | The ID to the App Registration in Microsoft Entra ID                                                                         | Yes       |
-| App Registration Client Secret           | The Client Secret to the App Registration in Microsoft Entra ID                                                              | Yes       |
-| Correlate only                           | When toggled, this connector will only correlate to an existing account and skip all further account lifecycle actions.      | No        |
-| IsDebug                                  | When toggled, extra logging is shown. Note that this is only meant for debugging, please switch this off when in production. | No        |
+| Setting                                                        | Description                                                                                                                               | Mandatory |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| App Registration Directory (tenant) ID                         | The ID to the Tenant in Microsoft Entra ID                                                                                                | Yes       |
+| App Registration Application (client) ID                       | The ID to the App Registration in Microsoft Entra ID                                                                                      | Yes       |
+| App Registration Client Secret                                 | The Client Secret to the App Registration in Microsoft Entra ID                                                                           | Yes       |
+| Correlate only                                                 | When toggled, this connector will only correlate to an existing account and skip all further account lifecycle actions.                   | No        |
+| Invite as Guest                                                | When toggled, this connector will create Guest accounts through invitation, allowing users to log in using their invited email addresses. | No        |
+| Delete the account when revoking the entitlement               | When toggled, this delete accounts when revoking the account entitlement.                                                                 | No        |
+| Set primary manager when an account is created                 | When toggled, this connector will calculate and set the manager upon creating an account.                                                 | No        |
+| Update manager when the account updated operation is performed | When toggled, this connector will calculate and set the manager upon updating an account.                                                 | No        |
+| IsDebug                                                        | When toggled, extra logging is shown. Note that this is only meant for debugging, please switch this off when in production.              | No        |
 
 
-## Setup the connector
+## Connector setup
 ### Application Registration
-The first step to connect to Graph API and make requests, is to register a new **Microsoft Entra ID Application**. The application is used to connect to the API and to manage permissions.
+The first step to connect to the Graph API and make requests is to register a new **Microsoft Entra ID Application**. This application will be used to connect to the API and manage permissions.
 
-- Navigate to **App Registrations** in Microsoft Entra ID, and select “New Registration” (**Microsoft Entra ID Portal > Microsoft Entra ID > App Registration > New Application Registration**).
-- Next, give the application a name. In this example we are using “**HelloID PowerShell**” as application name.
-- Specify who can use this application (**Accounts in this organizational directory only**).
-- Specify the Redirect URI. You can enter any url as a redirect URI value. In this example we used http://localhost because it doesn't have to resolve.
-- Click the “**Register**” button to finally create your new application.
+Follow these steps:
 
-Some key items regarding the application are the Application ID (which is the Client ID), the Directory ID (which is the Tenant ID) and Client Secret.
+1. **Navigate to App Registrations**:
+   - Go to the Microsoft Entra ID Portal.
+   - Navigate to **Microsoft Entra ID** > **App registrations**.
+   - Click on **New registration**.
+
+2. **Register the Application**:
+   - **Name**: Enter a name for your application (e.g., "HelloID PowerShell").
+   - **Supported Account Types**: Choose who can use this application (e.g., "Accounts in this organizational directory only").
+   - **Redirect URI**: Choose the platform as `Web` and enter a redirect URI (e.g., `http://localhost`).
+
+3. **Complete the Registration**:
+   - Click the **Register** button to create your new application.
+
+For more detailed instructions, please see the official Microsoft documentation: [Quickstart: Register an app in the Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app?tabs=certificate).
 
 ### Configuring App Permissions
-The [Microsoft Graph documentation](https://docs.microsoft.com/en-us/graph) provides details on which permission are required for each permission type.
+Next, configure the necessary API permissions for your Microsoft Entra ID application. For this connector, we use the **Microsoft Graph API**.
 
-To assign your application the right permissions, navigate to **Microsoft Entra ID Portal > Microsoft Entra ID >App Registrations**.
-Select the application we created before, and select “**API Permissions**” or “**View API Permissions**”.
-To assign a new permission to your application, click the “Add a permission” button.
-From the “**Request API Permissions**” screen click “**Microsoft Graph**”.
-For this connector the following permissions are used as **Application permissions**:
--	Read and Write all user’s full profiles by using *User.ReadWrite.All*
--	Read and Write all groups in an organization’s directory by using *Group.ReadWrite.All*
--	Read and write all group memberships by using *GroupMember.ReadWrite.All*
--	Read and write all users' authentication methods by using *UserAuthenticationMethod.ReadWrite.All*
+Follow these steps:
 
-Some high-privilege permissions can be set to admin-restricted and require an administrators consent to be granted.
+1. In your Microsoft Entra ID application, navigate to the **API Permissions** section.
+2. Click on **Add a permission**.
+3. Select **Microsoft Graph**.
+4. Choose **Application permissions** and add the following:
+   - `User.ReadWrite.All`: Read and write all user’s full profiles.
+   - `Group.ReadWrite.All`: Read and write all groups in an organization’s directory.
+   - `GroupMember.ReadWrite.All`: Read and write all group memberships.
+   - `UserAuthenticationMethod.ReadWrite.All`: Read and write all users’ authentication methods.
+5. Click **Add permissions**.
+6. If required, click on **Grant admin consent for [Your Tenant]** to grant the necessary permissions.
 
-To grant admin consent to our application press the “**Grant admin consent for TENANT**” button.
+For more detailed instructions, please see the official Microsoft documentation: [Quickstart: Configure a client application to access a web API](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-configure-app-access-web-apis).
 
 ### Authentication and Authorization
-There are multiple ways to authenticate to the Graph API with each has its own pros and cons, in this example we are using the Authorization Code grant type.
+To authenticate to the Graph API using the Authorization Code grant type, you need to obtain the necessary credentials. We recommend using the Client secret.
 
--	First we need to get the **Client ID**, go to the **Microsoft Entra ID Portal > Microsoft Entra ID > App Registrations**.
--	Select your application and copy the Application (client) ID value.
--	After we have the Client ID we also have to create a **Client Secret**.
--	From the Microsoft Entra ID Portal, go to **Microsoft Entra ID > App Registrations**.
--	Select the application we have created before, and select "**Certificates and Secrets**". 
--	Under “Client Secrets” click on the “**New Client Secret**” button to create a new secret.
--	Provide a logical name for your secret in the Description field, and select the expiration date for your secret.
--	It's IMPORTANT to copy the newly generated client secret, because you cannot see the value anymore after you close the page.
--	At last we need to get the **Tenant ID**. This can be found in the Microsoft Entra ID Portal by going to **Microsoft Entra ID > Overview**.
+Follow these steps:
 
-### Remarks
+1. **Get the Tenant ID**:
+   - In the Microsoft Entra ID Portal, go to **Azure Active Directory** > **Overview**.
+   - Copy the **Tenant ID** from the Overview page.
 
-#### Limited attributes in the create action
-The create account in the [graph api](https://learn.microsoft.com/en-us/graph/api/user-post-users?view=graph-rest-1.0&tabs=http) is limited. For that reason, the account is updated after it is created. This could result in an account that is created without all attributes. Because the correlation value is mandatory HelloID can correlate the account when retrying the action.
+2. **Get the Client ID**:
+   - Go to the Microsoft Entra ID Portal.
+   - Navigate to **Azure Active Directory** > **App registrations**.
+   - Select your application and copy the **Application (client) ID** value.
+
+3. **Create a Client Secret**:
+   - In the Microsoft Entra ID Portal, go to **Azure Active Directory** > **App registrations**.
+   - Select the application you created earlier.
+   - Navigate to **Certificates & secrets**.
+   - Under **Client secrets**, click on **New client secret**.
+   - Provide a description for your secret and select an expiration date.
+   - Click **Add** and copy the newly generated client secret. **Important**: You cannot view the client secret value again after you close the page, so make sure to copy it immediately.
+
+For more detailed instructions, please see the official Microsoft documentation: [Add credentials](https://learn.microsoft.com/en-us/graph/auth-register-app-v2#add-credentials).
 
 ## Getting help
 > [!TIP]
