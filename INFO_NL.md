@@ -2,7 +2,7 @@ Met behulp van de Microsoft Azure Active Directory (AD) Target Connector koppel 
 
 ## Wat is Microsoft Azure AD
 
-Microsoft Azure AD - inmiddels beschikbaar onder de naam Microsoft Entra ID - is een oplossing voor identiteits- en toegangsbeheer van de Amerikaanse techgigant Microsoft. De oplossing ondersteunt organisaties met het veilig houden en beheren van identiteiten, zowel voor hybride als multicloud-omgevingen. Microsoft Azure AD is volledig cloudgebaseerd en geeft werknemers toegang tot diverse externe resources. Voorbeelden zijn Microsoft 365 en Azure Portal, maar ook een breed scala aan SaaS-toepassingen.
+Microsoft Azure AD - inmiddels beschikbaar onder de naam [Microsoft Entra ID](https://www.tools4ever.nl/connectoren/entraid/) - is een oplossing voor identiteits- en toegangsbeheer van de Amerikaanse techgigant Microsoft. De oplossing ondersteunt organisaties met het veilig houden en beheren van identiteiten, zowel voor hybride als multicloud-omgevingen. Microsoft Azure AD is volledig cloudgebaseerd en geeft werknemers toegang tot diverse externe resources. Voorbeelden zijn Microsoft 365 en Azure Portal, maar ook een breed scala aan SaaS-toepassingen.
 
 Waarom is een Microsoft Azure AD koppeling handig?
 
