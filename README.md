@@ -1,101 +1,256 @@
-| :information_source: Information |
-|:---------------------------|
-| This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.       |
-<br />
+
+# HelloID-Conn-Prov-Target-Microsoft-Entra-ID
+
+> [!IMPORTANT]
+> This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.
+
 <p align="center">
-  <img src="https://www.tools4ever.nl/connector-logos/azureactivedirectory-logo.png">
+  <img src="https://github.com/Tools4everBV/HelloID-Conn-Prov-Target-Microsoft-Entra-ID/blob/main/Logo.png?raw=true">
 </p>
 
-## Versioning
-| Version | Description | Date |
-| - | - | - |
-| 1.1.0   | Updated with new logging and added license management | 2022/07/12  |
-| 1.0.0   | Initial release | 2021/07/30  |
+## Table of contents
 
-<!-- TABLE OF CONTENTS -->
-## Table of Contents
-- [Versioning](#versioning)
-- [Table of Contents](#table-of-contents)
-- [Introduction](#introduction)
-- [Getting the Azure AD graph API access](#getting-the-azure-ad-graph-api-access)
-  - [Application Registration](#application-registration)
-  - [Configuring App Permissions](#configuring-app-permissions)
-  - [Authentication and Authorization](#authentication-and-authorization)
-  - [Connection settings](#connection-settings)
-- [Remarks](#remarks)
-- [Getting help](#getting-help)
-- [HelloID Docs](#helloid-docs)
+- [HelloID-Conn-Prov-Target-Microsoft-Entra-ID](#helloid-conn-prov-target-microsoft-entra-id)
+  - [Table of contents](#table-of-contents)
+  - [Requirements](#requirements)
+  - [Remarks](#remarks)
+    - [Account Creation Limitations](#account-creation-limitations)
+    - [Supported Group Types](#supported-group-types)
+    - [Managing Permissions in Teams](#managing-permissions-in-teams)
+    - [Creating Guest Accounts](#creating-guest-accounts)
+    - [Handling Null Values in Field Mapping](#handling-null-values-in-field-mapping)
+      - [Example:](#example)
+  - [Introduction](#introduction)
+  - [Getting started](#getting-started)
+    - [Provisioning PowerShell V2 connector](#provisioning-powershell-v2-connector)
+      - [Correlation configuration](#correlation-configuration)
+      - [Field mapping](#field-mapping)
+    - [Connection settings](#connection-settings)
+  - [Connector setup](#connector-setup)
+    - [Application Registration](#application-registration)
+    - [Configuring App Permissions](#configuring-app-permissions)
+    - [Authentication and Authorization](#authentication-and-authorization)
+  - [Getting help](#getting-help)
+  - [HelloID docs](#helloid-docs)
+
+## Requirements
+1. **HelloID Environment**:
+   - Set up your _HelloID_ environment.
+   - Install the _HelloID_ Service Automation agent (cloud or on-prem).
+1. **Graph API Credentials**:
+   - Create an **App Registration** in Microsoft Entra ID.
+   - Add API permissions for your app:
+     - **Application permissions**:
+       - `User.ReadWrite.All`: Read and write all user’s full profiles.
+       - `Group.ReadWrite.All`: Read and write all groups in an organization’s directory.
+       - `GroupMember.ReadWrite.All`: Read and write all group memberships.
+       - `UserAuthenticationMethod.ReadWrite.All`: Read and write all users’ authentication methods.
+   - Create access credentials for your app:
+     - Create a **client secret** for your app.
+
+## Remarks
+### Account Creation Limitations
+- The [Graph API](https://learn.microsoft.com/en-us/graph/api/user-post-users?view=graph-rest-1.0&tabs=http) has limitations when creating accounts. As a result, accounts may be created without all attributes. Since the correlation value is mandatory, HelloID can correlate the account when retrying the action.
+
+### Supported Group Types
+- The [Microsoft Graph API](https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0) exclusively supports  Microsoft 365 and Security groups. Mail-enabled security groups and Distribution groups cannot be managed via this API. To manage these types of groups, use the [Exchange Online connector](https://github.com/Tools4everBV/HelloID-Conn-Prov-Target-ExchangeOnline).
+
+### Managing Permissions in Teams
+- The script for dynamically managing permissions in Teams is similar to that for Groups, with an added filter for Teams-enabled groups. This is because a Team is inherently an M365 group, allowing us to manage its members within the group context rather than within Teams itself.
+
+
+### Creating Guest Accounts
+- This connector allows the creation of Guest accounts through invitation, enabling users to log in using their invited email addresses. This feature can be enabled or disabled using the "Invite as Guest" option.
+- If direct creation of Microsoft Entra ID Guest accounts (with login names under the tenant domain) is preferred, ensure that the "Invite as Guest" option is not enabled.
+- By specifying the `userType` as 'Guest' in the mapping, Guest accounts with login names under the tenant domain can be created effortlessly.
+
+### Handling Null Values in Field Mapping
+
+- The script filters out all field mappings with the value `$null`. If the value in the HelloID person model is `$null`, it is also filtered out. If this behavior is not desired, change the mapping to complex and ensure you return a string with a `space` or `empty` when the value is `$null`. This way, the value is correctly handled by the script.
+
+#### Example:
+```javascript
+function getCompanyName() {
+  let companyName = Person.PrimaryContract.Employer.Name;
+  if (companyName === null) {
+    companyName = ' ';
+  }
+  return companyName;
+}
+getCompanyName();
+```
 
 ## Introduction
-The interface to communicate with Microsoft Azure AD is through the Microsoft Graph API.
+_HelloID-Conn-Prov-Target-Microsoft-Entra-ID_ is a _target_ connector. _Microsoft_ provides a set of REST API's that allow you to programmatically interact with its data. The Microsoft Entra ID connector uses the API endpoints listed in the table below.
 
-For this connector we have the option to correlate to existing Azure AD users and provision (dynamic) groupmemberships.
-  >__Currently only Microsoft 365 and Security groups are supported by the [Microsoft Graph API](https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0).<br>
-This means we cannot manage Mail-enabled security groups and Distribution groups, These can only be managed using the [Exchange Online connector](https://github.com/Tools4everBV/HelloID-Conn-Prov-Target-ExchangeOnline).__
+| Endpoint                                                                                                                                                        | Description                                |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| [/v1.0/users/{id}](https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http)                                                          | Get a user (GET)                           |
+| [/v1.0/users](https://learn.microsoft.com/en-us/graph/api/user-post-users?view=graph-rest-1.0&tabs=http)                                                        | Create user (POST)                         |
+| [/v1.0/users/{id}](https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0&tabs=http)                                                       | Update user (PATCH)                        |
+| [/v1.0/users/{id}](https://learn.microsoft.com/en-us/graph/api/user-delete?view=graph-rest-1.0&tabs=http)                                                       | Delete user (DELETE)                       |
+| [/v1/groups](https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http)                                                              | List groups (GET)                          |
+| [/v1/groups/{group-id}/members/$ref](https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0&tabs=http)                              | Add member (POST)                          |
+| [/v1/groups/{id}/members/{id}/$ref](https://learn.microsoft.com/en-us/graph/api/group-delete-members?view=graph-rest-1.0&tabs=http)                             | Remove member (DELETE)                     |
+| [/v1/groups](https://learn.microsoft.com/en-us/graph/api/group-post-groups?view=graph-rest-1.0&tabs=http)                                                       | Create group (POST)                        |
+| [/v1.0/users/{id}/authentication/emailMethods/{id}](https://learn.microsoft.com/nl-nl/graph/api/emailauthenticationmethod-get?view=graph-rest-1.0&tabs=http)    | Get emailAuthenticationMethod (GET)        |
+| [/v1.0/users/{id}/authentication/emailMethods](https://learn.microsoft.com/nl-nl/graph/api/authentication-post-emailmethods?view=graph-rest-1.0&tabs=http)      | Create emailMethod (POST)                  |
+| [/v1.0/users/{id}/authentication/emailMethods/{id}](https://learn.microsoft.com/nl-nl/graph/api/emailauthenticationmethod-update?view=graph-rest-1.0&tabs=http) | Update emailAuthenticationMethod (PATCH)   |
+| [/v1.0/users/{id}/authentication/emailMethods/{id}](https://learn.microsoft.com/nl-nl/graph/api/emailauthenticationmethod-delete?view=graph-rest-1.0&tabs=http) | UDelete emailAuthenticationMethod (DELETE) |
+| [/v1.0/users/{id}/authentication/phoneMethods/{id}](https://learn.microsoft.com/nl-nl/graph/api/phoneauthenticationmethod-get?view=graph-rest-1.0&tabs=http)    | Get phoneAuthenticationMethod (GET)        |
+| [/v1.0/users/{id}/authentication/phoneMethods](https://learn.microsoft.com/nl-nl/graph/api/authentication-post-phonemethods?view=graph-rest-1.0&tabs=http)      | Create phoneMethod (POST)                  |
+| [/v1.0/users/{id}/authentication/phoneMethods/{id}](https://learn.microsoft.com/nl-nl/graph/api/phoneauthenticationmethod-update?view=graph-rest-1.0&tabs=http) | Update phoneAuthenticationMethod (PATCH)   |
+| [/v1.0/users/{id}/authentication/phoneMethods/{id}](https://learn.microsoft.com/nl-nl/graph/api/phoneauthenticationmethod-delete?view=graph-rest-1.0&tabs=http) | UDelete phoneAuthenticationMethod (DELETE) |
 
-If you want to create Azure accounts, please use the built-in Microsoft Azure Active Directory target system.
 
-<!-- GETTING STARTED -->
-## Getting the Azure AD graph API access
+The following lifecycle actions are available:
 
-By using this connector you will have the ability to manage Azure AD Guest accounts.
+| Action                                            | Description                                                                                |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| create.ps1                                        | Create or correlate to an account                                                          |
+| delete.ps1                                        | Delete an account                                                                          |
+| disable.ps1                                       | Disable an account                                                                         |
+| enable.ps1                                        | Enable an account                                                                          |
+| update.ps1                                        | Update an account                                                                          |
+| uniquenessCheck.json                              | Default _uniquenessCheck.json_                                                             |
+| groups - permissions.ps1                          | List groups as permissions                                                                 |
+| groups - grantPermission.ps1                      | Grant groupmembership to an account                                                        |
+| groups - revokePermission.ps1                     | Revoke groupmembership from an account                                                     |
+| groups - resources.ps1                            | Create groups from resources                                                               |
+| groups - subPermissions.ps1                       | Grant/Revoke groupmembership from an account                                               |
+| emailAuthenticationMethods - permissions.ps1      | List emailAuthenticationMethods as permissions                                             |
+| emailAuthenticationMethods - grantPermission.ps1  | Grant emailAuthenticationMethod to an account                                              |
+| emailAuthenticationMethods - revokePermission.ps1 | Revoke emailAuthenticationMethod from an account                                           |
+| emailAuthenticationMethods - configuration.json   | Additional _configuration.json_ with settings specifically for emailAuthenticationMethods  |
+| phoneAuthenticationMethods - permissions.ps1      | List phoneAuthenticationMethods as permissions                                             |
+| phoneAuthenticationMethods - grantPermission.ps1  | Grant phoneAuthenticationMethod to an account                                              |
+| phoneAuthenticationMethods - revokePermission.ps1 | Revoke phoneAuthenticationMethod from an account                                           |
+| phoneAuthenticationMethods - configuration.json   | Additional _configuration.json_ with settings specifically for phoneAuthenticationMethods  |
+| configuration.json                                | Default _configuration.json_                                                               |
+| fieldMapping.json                                 | _fieldMapping.json_ for when using the the full account lifecycle                          |
+| fieldMapping.correlateOnly.json                   | _fieldMapping.json_ for when only using the correlation and not the full account lifecycle |
 
-### Application Registration
-The first step to connect to Graph API and make requests, is to register a new <b>Azure Active Directory Application</b>. The application is used to connect to the API and to manage permissions.
+## Getting started
+By using this connector you will have the ability to seamlessly create and user accounts and groups in Microsoft Entra ID. Additionally, you can set the MFA phone or email settings.
 
-* Navigate to <b>App Registrations</b> in Azure, and select “New Registration” (<b>Azure Portal > Azure Active Directory > App Registration > New Application Registration</b>).
-* Next, give the application a name. In this example we are using “<b>HelloID PowerShell</b>” as application name.
-* Specify who can use this application (<b>Accounts in this organizational directory only</b>).
-* Specify the Redirect URI. You can enter any url as a redirect URI value. In this example we used http://localhost because it doesn't have to resolve.
-* Click the “<b>Register</b>” button to finally create your new application.
+Connecting to Microsoft the Microsoft Graph API is straightforward. Simply utilize the API Key and API Secret pair.
+For further details, refer to the following pages in the Microsoft Docs:
 
-Some key items regarding the application are the Application ID (which is the Client ID), the Directory ID (which is the Tenant ID) and Client Secret.
+- [Use the Microsoft Graph API](https://learn.microsoft.com/en-us/graph/use-the-api).
+- [User Properties](https://learn.microsoft.com/en-us/graph/api/resources/user?view=graph-rest-1.0#properties).
+- [Supported User Properties for Correlation](https://learn.microsoft.com/en-us/graph/aad-advanced-queries?tabs=http#user-properties).
 
-### Configuring App Permissions
-The [Microsoft Graph documentation](https://docs.microsoft.com/en-us/graph) provides details on which permission are required for each permission type.
+### Provisioning PowerShell V2 connector
 
-To assign your application the right permissions, navigate to <b>Azure Portal > Azure Active Directory >App Registrations</b>.
-Select the application we created before, and select “<b>API Permissions</b>” or “<b>View API Permissions</b>”.
-To assign a new permission to your application, click the “<b>Add a permission</b>” button.
-From the “<b>Request API Permissions</b>” screen click “<b>Microsoft Graph</b>”.
-For this connector the following permissions are used as <b>Application permissions</b>:
-*	Read and Write all user’s full profiles by using <b><i>User.ReadWrite.All</i></b>
-*	Read and Write all groups in an organization’s directory by using <b><i>Group.ReadWrite.All</i></b>
-*	Read and Write data to an organization’s directory by using <b><i>Directory.ReadWrite.All</i></b>
+#### Correlation configuration
+The correlation configuration is used to specify which properties will be used to match an existing account within _Microsoft Entra ID_ to a person in _HelloID_.
 
-Some high-privilege permissions can be set to admin-restricted and require an administrators consent to be granted.
+To properly setup the correlation:
 
-To grant admin consent to our application press the “<b>Grant admin consent for TENANT</b>” button.
+1. Open the `Correlation` tab.
 
-### Authentication and Authorization
-There are multiple ways to authenticate to the Graph API with each has its own pros and cons, in this example we are using the Authorization Code grant type.
+2. Specify the following configuration:
 
-*	First we need to get the <b>Client ID</b>, go to the <b>Azure Portal > Azure Active Directory > App Registrations</b>.
-*	Select your application and copy the Application (client) ID value.
-*	After we have the Client ID we also have to create a <b>Client Secret</b>.
-*	From the Azure Portal, go to <b>Azure Active Directory > App Registrations</b>.
-*	Select the application we have created before, and select "<b>Certificates and Secrets</b>". 
-*	Under “Client Secrets” click on the “<b>New Client Secret</b>” button to create a new secret.
-*	Provide a logical name for your secret in the Description field, and select the expiration date for your secret.
-*	It's IMPORTANT to copy the newly generated client secret, because you cannot see the value anymore after you close the page.
-*	At last we need to get the <b>Tenant ID</b>. This can be found in the Azure Portal by going to <b>Azure Active Directory > Overview</b>.
+    | Setting                   | Value                             |
+    | ------------------------- | --------------------------------- |
+    | Enable correlation        | `True`                            |
+    | Person correlation field  | `PersonContext.Person.ExternalId` |
+    | Account correlation field | `employeeId`                      |
+
+> [!IMPORTANT]
+> The account correlation field is added to the create action. If you use a different value then `employeeId`, please make sure this is support by the [graph api](https://learn.microsoft.com/en-us/graph/api/user-post-users?view=graph-rest-1.0&tabs=http)
+
+
+> [!TIP]
+> _For more information on correlation, please refer to our correlation [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems/correlation.html) pages_.
+
+#### Field mapping
+The field mapping can be imported by using the _fieldMapping.json_ file.
 
 ### Connection settings
 The following settings are required to connect to the API.
 
-| Setting     | Description |
-| ------------ | ----------- |
-| Azure AD Tenant ID | Id of the Azure tenant |
-| Azure AD App ID | Id of the Azure app |
-| Azure AD App Secret | Secret of the Azure app |
+| Setting                                                        | Description                                                                                                                               | Mandatory |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| App Registration Directory (tenant) ID                         | The ID to the Tenant in Microsoft Entra ID                                                                                                | Yes       |
+| App Registration Application (client) ID                       | The ID to the App Registration in Microsoft Entra ID                                                                                      | Yes       |
+| App Registration Client Secret                                 | The Client Secret to the App Registration in Microsoft Entra ID                                                                           | Yes       |
+| Invite as Guest                                                | When toggled, this connector will create Guest accounts through invitation, allowing users to log in using their invited email addresses. | No        |
+| Delete the account when revoking the entitlement               | When toggled, this delete accounts when revoking the account entitlement.                                                                 | No        |
+| Set primary manager when an account is created                 | When toggled, this connector will calculate and set the manager upon creating an account.                                                 | No        |
+| Update manager when the account updated operation is performed | When toggled, this connector will calculate and set the manager upon updating an account.                                                 | No        |
+| IsDebug                                                        | When toggled, extra logging is shown. Note that this is only meant for debugging, please switch this off when in production.              | No        |
 
-## Remarks
-- The dynamic permissions script for Teams is almost the same as the one for Groups. The only difference is an additional filter for Teams-enabled groups. This is due to the fact that a Team is always a M365 group and we can manage the members of that group instead of in Teams itself.
+
+## Connector setup
+### Application Registration
+The first step to connect to the Graph API and make requests is to register a new **Microsoft Entra ID Application**. This application will be used to connect to the API and manage permissions.
+
+Follow these steps:
+
+1. **Navigate to App Registrations**:
+   - Go to the Microsoft Entra ID Portal.
+   - Navigate to **Microsoft Entra ID** > **App registrations**.
+   - Click on **New registration**.
+
+2. **Register the Application**:
+   - **Name**: Enter a name for your application (e.g., "HelloID PowerShell").
+   - **Supported Account Types**: Choose who can use this application (e.g., "Accounts in this organizational directory only").
+   - **Redirect URI**: Choose the platform as `Web` and enter a redirect URI (e.g., `http://localhost`).
+
+3. **Complete the Registration**:
+   - Click the **Register** button to create your new application.
+
+For more detailed instructions, please see the official Microsoft documentation: [Quickstart: Register an app in the Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app?tabs=certificate).
+
+### Configuring App Permissions
+Next, configure the necessary API permissions for your Microsoft Entra ID application. For this connector, we use the **Microsoft Graph API**.
+
+Follow these steps:
+
+1. In your Microsoft Entra ID application, navigate to the **API Permissions** section.
+2. Click on **Add a permission**.
+3. Select **Microsoft Graph**.
+4. Choose **Application permissions** and add the following:
+   - `User.ReadWrite.All`: Read and write all user’s full profiles.
+   - `Group.ReadWrite.All`: Read and write all groups in an organization’s directory.
+   - `GroupMember.ReadWrite.All`: Read and write all group memberships.
+   - `UserAuthenticationMethod.ReadWrite.All`: Read and write all users’ authentication methods.
+5. Click **Add permissions**.
+6. If required, click on **Grant admin consent for [Your Tenant]** to grant the necessary permissions.
+
+For more detailed instructions, please see the official Microsoft documentation: [Quickstart: Configure a client application to access a web API](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-configure-app-access-web-apis).
+
+### Authentication and Authorization
+To authenticate to the Graph API using the Authorization Code grant type, you need to obtain the necessary credentials. We recommend using the Client secret.
+
+Follow these steps:
+
+1. **Get the Tenant ID**:
+   - In the Microsoft Entra ID Portal, go to **Azure Active Directory** > **Overview**.
+   - Copy the **Tenant ID** from the Overview page.
+
+2. **Get the Client ID**:
+   - Go to the Microsoft Entra ID Portal.
+   - Navigate to **Azure Active Directory** > **App registrations**.
+   - Select your application and copy the **Application (client) ID** value.
+
+3. **Create a Client Secret**:
+   - In the Microsoft Entra ID Portal, go to **Azure Active Directory** > **App registrations**.
+   - Select the application you created earlier.
+   - Navigate to **Certificates & secrets**.
+   - Under **Client secrets**, click on **New client secret**.
+   - Provide a description for your secret and select an expiration date.
+   - Click **Add** and copy the newly generated client secret. **Important**: You cannot view the client secret value again after you close the page, so make sure to copy it immediately.
+
+For more detailed instructions, please see the official Microsoft documentation: [Add credentials](https://learn.microsoft.com/en-us/graph/auth-register-app-v2#add-credentials).
 
 ## Getting help
-> _For more information on how to configure a HelloID PowerShell connector, please refer to our [documentation](https://docs.helloid.com/hc/en-us/articles/360012518799-How-to-add-a-target-system) pages_
+> [!TIP]
+> _For more information on how to configure a HelloID PowerShell connector, please refer to our [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems.html) pages_.
 
-> _If you need help, feel free to ask questions on our [forum](https://forum.helloid.com)_
+> [!TIP]
+>  _If you need help, feel free to ask questions on our [forum](https://forum.helloid.com)_.
 
-## HelloID Docs
+## HelloID docs
 The official HelloID documentation can be found at: https://docs.helloid.com/
