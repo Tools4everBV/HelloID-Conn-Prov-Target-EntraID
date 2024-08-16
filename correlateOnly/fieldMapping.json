@@ -60,7 +60,7 @@
           ],
           "MappingMode": "None",
           "Value": "null",
-          "UsedInNotifications": true,
+          "UsedInNotifications": false,
           "StoreInAccountData": true
         }
       ]
