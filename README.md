@@ -36,7 +36,7 @@
 ## Requirements
 1. **HelloID Environment**:
    - Set up your _HelloID_ environment.
-   - Install the _HelloID_ Service Automation agent (cloud or on-prem).
+   - Install the _HelloID_ Provisioning agent (cloud or on-prem).
 1. **Graph API Credentials**:
    - Create an **App Registration** in Microsoft Entra ID.
    - Add API permissions for your app:
