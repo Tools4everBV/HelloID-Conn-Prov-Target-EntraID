@@ -283,7 +283,7 @@
     },
     {
       "Name": "userType",
-      "Description": "A string value that can be used to classify user types in your directory, such as Member and Guest.",
+      "Description": "[Required] A string value that can be used to classify user types in your directory, such as Member and Guest.",
       "Type": "Text",
       "MappingActions": [
         {
@@ -328,7 +328,7 @@
     },
     {
       "Name": "usageLocation",
-      "Description": "A two-letter country code (ISO standard 3166). Required for users that are assigned licenses due to legal requirements to check for availability of services in countries.\nExamples include: US, JP, and GB. Not nullable.",
+      "Description": "[Required] A two-letter country code (ISO standard 3166). Required for users that are assigned licenses due to legal requirements to check for availability of services in countries.\nExamples include: US, JP, and GB. Not nullable.",
       "Type": "Text",
       "MappingActions": [
         {
