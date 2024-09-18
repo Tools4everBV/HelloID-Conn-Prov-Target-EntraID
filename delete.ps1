@@ -211,7 +211,19 @@ try {
         ErrorAction = "Stop"
     }
     $currentMicrosoftEntraIDAccount = $null
-    $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
+
+    try {
+        $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
+    }
+    catch {
+        # A '404' is returned when the Entra ID account is not found
+        if ($_.Exception.Response.StatusCode -eq 404) {
+            $currentMicrosoftEntraIDAccount = $null
+        }
+        else {
+            throw
+        }
+    }
 
     Write-Information "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
     #endregion Get Microsoft Entra ID account
@@ -288,7 +300,7 @@ try {
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
                     Message = "Skipped deleting account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: No account found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
-                    IsError = $true
+                    IsError = $false
                 })
             #endregion No account found
 
@@ -300,6 +312,7 @@ try {
 }
 catch {
     $ex = $PSItem
+
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-MicrosoftGraphAPIError -ErrorObject $ex

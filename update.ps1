@@ -241,7 +241,19 @@ try {
         ErrorAction = "Stop"
     }
     $currentMicrosoftEntraIDAccount = $null
-    $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
+    
+    try {
+        $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
+    }
+    catch {
+        # A '404' is returned when the Entra ID account is not found
+        if ($_.Exception.Response.StatusCode -eq 404) {
+            $currentMicrosoftEntraIDAccount = $null
+        }
+        else {
+            throw
+        }
+    }
 
     Write-Information "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
     #endregion Get Microsoft Entra ID account
