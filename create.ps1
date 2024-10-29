@@ -1,8 +1,9 @@
 #################################################
 # HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Create
-# Create and update or correlate to account
+# Create and update and optionally set manager or correlate to account
 # PowerShell V2
 #################################################
+
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
@@ -15,33 +16,6 @@ $InformationPreference = "Continue"
 $WarningPreference = "Continue"
 
 #region functions
-function Convert-StringToBoolean($obj) {
-    if ($obj -is [PSCustomObject]) {
-        foreach ($property in $obj.PSObject.Properties) {
-            $value = $property.Value
-            if ($value -is [string]) {
-                $lowercaseValue = $value.ToLower()
-                if ($lowercaseValue -eq "true") {
-                    $obj.$($property.Name) = $true
-                }
-                elseif ($lowercaseValue -eq "false") {
-                    $obj.$($property.Name) = $false
-                }
-            }
-            elseif ($value -is [PSCustomObject] -or $value -is [System.Collections.IDictionary]) {
-                $obj.$($property.Name) = Convert-StringToBoolean $value
-            }
-            elseif ($value -is [System.Collections.IList]) {
-                for ($i = 0; $i -lt $value.Count; $i++) {
-                    $value[$i] = Convert-StringToBoolean $value[$i]
-                }
-                $obj.$($property.Name) = $value
-            }
-        }
-    }
-    return $obj
-}
-
 function Resolve-MicrosoftGraphAPIError {
     [CmdletBinding()]
     param (
@@ -95,78 +69,20 @@ function Resolve-MicrosoftGraphAPIError {
     }
 }
 
-function New-AuthorizationHeaders {
-    [CmdletBinding()]
-    [OutputType([System.Collections.Generic.Dictionary[[String], [String]]])]
-    param(
-        [parameter(Mandatory)]
-        [string]
-        $TenantId,
-
-        [parameter(Mandatory)]
-        [string]
-        $ClientId,
-
-        [parameter(Mandatory)]
-        [string]
-        $ClientSecret
-    )
-    try {
-        Write-Verbose "Creating Access Token"
-        $baseUri = "https://login.microsoftonline.com/"
-        $authUri = $baseUri + "$TenantId/oauth2/token"
-    
-        $body = @{
-            grant_type    = "client_credentials"
-            client_id     = "$ClientId"
-            client_secret = "$ClientSecret"
-            resource      = "https://graph.microsoft.com"
+function Convert-StringToBoolean($obj) {
+    foreach ($property in $obj.PSObject.Properties) {
+        $value = $property.Value
+        if ($value -is [string]) {
+            try {
+                $obj.$($property.Name) = [System.Convert]::ToBoolean($value)
+            }
+            catch {
+                # Handle cases where conversion fails
+                $obj.$($property.Name) = $value
+            }
         }
-    
-        $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
-        $accessToken = $Response.access_token
-    
-        #Add the authorization header to the request
-        Write-Verbose 'Adding Authorization headers'
-
-        $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-        $headers.Add('Authorization', "Bearer $accesstoken")
-        $headers.Add('Accept', 'application/json')
-        $headers.Add('Content-Type', 'application/json')
-        # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
-        $headers.Add('ConsistencyLevel', 'eventual')
-
-        Write-Output $headers  
     }
-    catch {
-        throw $_
-    }
-}
-
-function Resolve-HTTPError {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory,
-            ValueFromPipeline
-        )]
-        [object]$ErrorObject
-    )
-    process {
-        $httpErrorObj = [PSCustomObject]@{
-            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
-            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
-            RequestUri            = $ErrorObject.TargetObject.RequestUri
-            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
-            ErrorMessage          = ''
-        }
-        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.Powershell.Commands.HttpResponseException') {
-            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
-        }
-        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
-            $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
-        }
-        Write-Output $httpErrorObj
-    }
+    return $obj
 }
 #endregion functions
 
@@ -177,9 +93,7 @@ try {
     $correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
 
     # Define account object
-    $account = [PSCustomObject]$actionContext.Data
-    # Remove properties phoneAuthenticationMethod, emailAuthenticationMethod and manager as they are set within seperate actions
-    $account = $account | Select-Object -ExcludeProperty phoneAuthenticationMethod, emailAuthenticationMethod, manager
+    $account = [PSCustomObject]$actionContext.Data.PsObject.Copy()
 
     # Define properties to query
     $accountPropertiesToQuery = @("id") + $account.PsObject.Properties.Name | Select-Object -Unique
@@ -195,33 +109,6 @@ try {
     $account = Convert-StringToBoolean $account
     #endRegion account
 
-    #region manager account
-    if ($actionContext.Configuration.setPrimaryManagerOnCreate -eq $true) {
-        # Define correlation
-        $managerCorrelationField = "employeeId"
-        $managerCorrelationValue = $personContext.Manager.ExternalId
-
-        # Define properties to query
-        $managerAccountPropertiesToQuery = @("id")
-    }
-    #endRegion manager account
-
-    #region guestInvite
-    if ($actionContext.Configuration.inviteAsGuest -eq $true) {
-        # Define correlation
-        $guestInviteAccount = [PSCustomObject]$actionContext.Data.guestInvite
-        # Remove properties with null-values
-        $guestInviteAccount.PsObject.Properties | ForEach-Object {
-            # Remove properties with null-values
-            if ($_.Value -eq $null) {
-                $guestInviteAccount.PsObject.Properties.Remove("$($_.Name)")
-            }
-        }
-        # Convert the properties containing "TRUE" or "FALSE" to boolean
-        $guestInviteAccount = Convert-StringToBoolean $guestInviteAccount
-    }
-    #endRegion guestInvite
-
     #region Verify correlation configuration and properties
     $actionMessage = "verifying correlation configuration and properties"
 
@@ -229,7 +116,7 @@ try {
         if ([string]::IsNullOrEmpty($correlationField)) {
             throw "Correlation is enabled but not configured correctly."
         }
-    
+        
         if ([string]::IsNullOrEmpty($correlationValue)) {
             throw "The correlation value for [$correlationField] is empty. This is likely a mapping issue."
         }
@@ -238,178 +125,147 @@ try {
         Write-Warning "Correlation is disabled."
     }
     #endregion Verify correlation configuration and properties
-
-    #region Create authorization headers
-    $actionMessage = "creating authorization headers"
-
-    $authorizationHeadersSplatParams = @{
-        TenantId     = $actionContext.Configuration.TenantID
-        ClientId     = $actionContext.Configuration.AppId
-        ClientSecret = $actionContext.Configuration.AppSecret
+    
+    #region Create access token
+    $actionMessage = "creating access token"
+    
+    $createAccessTokenBody = @{
+        grant_type    = "client_credentials"
+        client_id     = $actionContext.Configuration.AppId
+        client_secret = $actionContext.Configuration.AppSecret
+        resource      = "https://graph.microsoft.com"
     }
-
-    $headers = New-AuthorizationHeaders @authorizationHeadersSplatParams
-
-    Write-Verbose "Created authorization headers."
-    #endregion Create authorization headers
-
-    #region Get Microsoft Entra ID account
-    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-    $actionMessage = "querying Microsoft Entra ID account"
-
-    $baseUri = "https://graph.microsoft.com/"
-    $getMicrosoftEntraIDAccountSplatParams = @{
-        Uri         = "$($baseUri)/v1.0/users?`$filter=$correlationField eq '$correlationValue'&`$select=$($accountPropertiesToQuery -join ',')"
+    
+    $createAccessTokenSplatParams = @{
+        Uri         = "https://login.microsoftonline.com/$($actionContext.Configuration.TenantID)/oauth2/token"
         Headers     = $headers
-        Method      = "GET"
+        Body        = $createAccessTokenBody
+        Method      = "POST"
+        ContentType = "application/x-www-form-urlencoded"
         Verbose     = $false
         ErrorAction = "Stop"
     }
-    $currentMicrosoftEntraIDAccount = $null
-    $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
-        
-    Write-Information "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
-    #endregion Get Microsoft Entra ID account
+    
+    $createAccessTokenResonse = Invoke-RestMethod @createAccessTokenSplatParams
+    
+    Write-Verbose "Created access token. Expires in: $($createAccessTokenResonse.expires_in | ConvertTo-Json)"
+    #endregion Create access token
+    
+    #region Create headers
+    $actionMessage = "creating headers"
+    
+    $headers = @{
+        "Accept"          = "application/json"
+        "Content-Type"    = "application/json;charset=utf-8"
+        "Mwp-Api-Version" = "1.0"
+    }
+    
+    Write-Verbose "Created headers. Result (without Authorization): $($headers | ConvertTo-Json)."
 
-    #region Account
+    # Add Authorization after printing splat
+    $headers['Authorization'] = "Bearer $($createAccessTokenResonse.access_token)"
+    #endregion Create headers
+    
+    if ($actionContext.CorrelationConfiguration.Enabled -eq $true) {
+        #region Get account
+        # API docs: https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http
+        $actionMessage = "querying account where [$($correlationField)] = [$($correlationValue)]"
+
+        $getEntraIDAccountSplatParams = @{
+            Uri         = "https://graph.microsoft.com/v1.0/users?`$filter=$correlationField eq '$correlationValue'&`$select=$($accountPropertiesToQuery -join ',')"
+            Method      = "GET"
+            Verbose     = $false
+            ErrorAction = "Stop"
+        }
+
+        Write-Verbose "SplatParams: $($getEntraIDAccountSplatParams | ConvertTo-Json)"
+
+        # Add Headers after printing splat
+        $getEntraIDAccountSplatParams['Headers'] = $headers
+
+        $getEntraIDAccountResponse = $null
+        $getEntraIDAccountResponse = Invoke-RestMethod @getEntraIDAccountSplatParams
+        $correlatedAccount = $getEntraIDAccountResponse.Value
+            
+        Write-Verbose "Queried account where [$($correlationField)] = [$($correlationValue)]. Result: $($correlatedAccount  | ConvertTo-Json)"
+        #endregion Get account
+    }
+    else{
+        $correlatedAccount = $null
+    }
+
     #region Calulate action
     $actionMessage = "calculating action"
-    if (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 0) {
-        $actionAccount = "Create"
-        if ($actionContext.Configuration.inviteAsGuest -eq $true) {
-            $actionAccountCreate = "GuestInvite"
-        }
-        else {
-            $actionAccountCreate = "Create"
-        }
-    }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 1) {
+    if (($correlatedAccount | Measure-Object).count -eq 1) {
         $actionAccount = "Correlate"
     }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -gt 1) {
+    elseif (($correlatedAccount | Measure-Object).count -eq 0) {
+        $actionAccount = "Create"
+    }
+    elseif (($correlatedAccount | Measure-Object).count -gt 1) {
         $actionAccount = "MultipleFound"
     }
-
-    Write-Information "Check if current account can be found. Result: $actionAccount"
     #endregion Calulate action
     
     #region Process
     switch ($actionAccount) {
         "Create" {
-            switch ($actionAccountCreate) {
-                "Create" {
-                    #region Create account                  
-                    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-post-users?view=graph-rest-1.0&tabs=http
-                    $actionMessage = "creating account"
-                    $baseUri = "https://graph.microsoft.com/"
+            #region Create account
+            # API docs: https://learn.microsoft.com/en-us/graph/api/user-post-users?view=graph-rest-1.0&tabs=http
+            $actionMessage = "creating account with displayName [$($account.displayName)] and userPrincipalName [$($account.userPrincipalName)]"
 
-                    # Create account with only required fields
-                    $requiredFields = @("accountEnabled", "displayName", "mailNickname", "passwordProfile", "userPrincipalName", "$correlationField")
-                    $createAccountBody = @{}
-                    foreach ($accountProperty in $account.PsObject.Properties | Where-Object { $null -ne $_.Value -and $_.Name -in $requiredFields }) {
-                        [void]$createAccountBody.Add($accountProperty.Name, $accountProperty.Value)
-                    }
-
-                    $createAccountSplatParams = @{
-                        Uri         = "$($baseUri)/v1.0/users"
-                        # Headers     = $headers
-                        Method      = "POST"
-                        Body        = ($createAccountBody | ConvertTo-Json -Depth 10)
-                        ContentType = 'application/json; charset=utf-8'
-                        Verbose     = $false
-                        ErrorAction = "Stop"
-                    }
-
-                    Write-Verbose "SplatParams: $($createAccountSplatParams | ConvertTo-Json)"
-
-                    if (-Not($actionContext.DryRun -eq $true)) {
-                        # Add header after printing splat
-                        $createAccountSplatParams['Headers'] = $headers
-
-                        $createdAccount = Invoke-RestMethod @createAccountSplatParams
-
-                        # The created account record is not compleet. So we use the field mapping
-                        $outputContext.Data = $actionContext.Data
-
-                        #region Set AccountReference and add AccountReference to Data
-                        $outputContext.AccountReference = "$($createdAccount.id)"
-                        $outputContext.Data.id = "$($createdAccount.id)"
-                        #endregion Set AccountReference and add AccountReference to Data
-
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                # Action  = "" # Optional
-                                Message = "Created account with displayName [$($createAccountBody.displayName)] and userPrincipalName [$($createAccountBody.userPrincipalName)] with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)."
-                                IsError = $false
-                            })
-                    }
-                    else {
-                        Write-Warning "DryRun: Would create account with displayName [$($createAccountBody.displayName)] and userPrincipalName [$($createAccountBody.userPrincipalName)]."
-                    }
-                    #endregion Create account
-                        
-                    break
-                }
-
-                "GuestInvite" {
-                    #region Create invitation
-                    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/invitation-post?view=graph-rest-1.0&tabs=http
-                    $actionMessage = "creating invitation"
-                    $baseUri = "https://graph.microsoft.com/"
-
-                    $createInvitationBody = $guestInviteAccount
-
-                    $createInvitationSplatParams = @{
-                        Uri         = "$($baseUri)/v1.0/invitations"
-                        # Headers     = $headers
-                        Method      = "POST"
-                        Body        = ($createInvitationBody | ConvertTo-Json -Depth 10)
-                        ContentType = 'application/json; charset=utf-8'
-                        Verbose     = $false
-                        ErrorAction = "Stop"
-                    }
-
-                    Write-Verbose "SplatParams: $($createInvitationSplatParams | ConvertTo-Json)"
-
-                    if (-Not($actionContext.DryRun -eq $true)) {
-                        # Add header after printing splat
-                        $createInvitationSplatParams['Headers'] = $headers
-
-                        $createdInvitation = Invoke-RestMethod @createInvitationSplatParams
-
-                        #region Set AccountReference and add AccountReference to Data
-                        $outputContext.AccountReference = "$($createdInvitation.invitedUser.id)"
-                        $outputContext.Data.id = "$($createdInvitation.invitedUser.id)"
-                        #endregion Set AccountReference and add AccountReference to Data
-
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                # Action  = "" # Optional
-                                Message = "Created invitiation for user with displayName [$($createInvitationBody.invitedUserDisplayName)] and emailAddress [$($createInvitationBody.invitedUserEmailAddress)] with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)."
-                                IsError = $false
-                            })
-                    }
-                    else {
-                        Write-Warning "DryRun: Would create invitiation for user with displayName [$($createInvitationBody.invitedUserDisplayName)] and emailAddress [$($createInvitationBody.invitedUserEmailAddress)]."
-                    }
-                    #endregion Create invitation
-
-                    break
-                }
+            # Create account with only required fields
+            $requiredFields = @("accountEnabled", "displayName", "passwordProfile", "mailNickname", "userPrincipalName", "mail", "userType", "usageLocation", "$correlationField")
+            $createAccountBody = [PSCustomObject]@{}
+            foreach ($accountProperty in $account.PsObject.Properties | Where-Object { $null -ne $_.Value -and $_.Name -in $requiredFields }) {
+                $createAccountBody | Add-Member -MemberType NoteProperty -Name $accountProperty.Name -Value $accountProperty.Value -Force
             }
 
+            $createAccountSplatParams = @{
+                Uri         = "https://graph.microsoft.com/v1.0/users"
+                Method      = "POST"
+                Body        = ($createAccountBody | ConvertTo-Json -Depth 10)
+                ContentType = 'application/json; charset=utf-8'
+                Verbose     = $false
+                ErrorAction = "Stop"
+            }
+
+            Write-Verbose "SplatParams: $($createAccountSplatParams | ConvertTo-Json)"
+
+            if (-Not($actionContext.DryRun -eq $true)) {
+                # Add Headers after printing splat
+                $createAccountSplatParams['Headers'] = $headers
+
+                $createAccountResponse = Invoke-RestMethod @createAccountSplatParams
+                $createdAccount = $createAccountResponse
+
+                # Set AccountReference and add AccountReference to Data
+                $outputContext.AccountReference = "$($createdAccount.id)"
+                $outputContext.Data | Add-Member -MemberType NoteProperty -Name "id" -Value "$($createdAccount.id)" -Force
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = "Created account with displayName [$($createAccountBody.displayName)] and userPrincipalName [$($createAccountBody.userPrincipalName)] with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)."
+                        IsError = $false
+                    })
+            }
+            else {
+                Write-Warning "DryRun: Would create account with displayName [$($createAccountBody.displayName)] and userPrincipalName [$($createAccountBody.userPrincipalName)]."
+            }
+            #endregion Create account
+
             #region Update account
-            # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0&tabs=http
-            $actionMessage = "updating created account"
-            $baseUri = "https://graph.microsoft.com/"
+            # API docs: https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0&tabs=http
+            $actionMessage = "updating created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
 
             # Update account with all other fields than the required fields
-            $updateAccountBody = @{}
+            $updateAccountBody = [PSCustomObject]@{}
             foreach ($accountProperty in $account.PsObject.Properties | Where-Object { $null -ne $_.Value -and $_.Name -notin $requiredFields }) {
-                [void]$updateAccountBody.Add($accountProperty.Name, $accountProperty.Value)
+                $updateAccountBody | Add-Member -MemberType NoteProperty -Name $accountProperty.Name -Value $accountProperty.Value -Force
             }
 
             $updateAccountSplatParams = @{
-                Uri         = "$($baseUri)/v1.0/users/$($outputContext.AccountReference)"
-                # Headers     = $headers
+                Uri         = "https://graph.microsoft.com/v1.0/users/$($outputContext.AccountReference)"
                 Method      = "PATCH"
                 Body        = ($updateAccountBody | ConvertTo-Json -Depth 10)
                 ContentType = 'application/json; charset=utf-8'
@@ -420,120 +276,46 @@ try {
             Write-Verbose "SplatParams: $($updateAccountSplatParams | ConvertTo-Json)"
 
             if (-Not($actionContext.DryRun -eq $true)) {
-                # Add header after printing splat
+                # Add Headers after printing splat
                 $updateAccountSplatParams['Headers'] = $headers
 
-                $updatedAccount = Invoke-RestMethod @updateAccountSplatParams
+                $updateAccountResponse = Invoke-RestMethod @updateAccountSplatParams
 
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
-                        Message = "Updated created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)."
+                        Message = "Updated created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json). Updated properties [$($updateAccountBody | ConvertTo-Json)."
                         IsError = $false
                     })
             }
             else {
-                Write-Warning "DryRun: Would update created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)."
+                Write-Warning "DryRun: Would update created account. Updated properties [$($updateAccountBody | ConvertTo-Json)."
             }
             #endregion Update account
 
             #region Manager
-            if ($actionContext.Configuration.setPrimaryManagerOnCreate -eq $true) {
-                #region Use Manager Reference
+            if ($actionContext.Configuration.setManagerOnCreate -eq $true) {
+                #region Calulate manager action
                 if (-not[String]::IsNullOrEmpty(($actionContext.References.ManagerAccount))) {
-                    $currentMicrosoftEntraIDManagerAccountId = $actionContext.References.ManagerAccount
-                }
-                #endregion Use Manager Reference
-                #region If Manager Reference is not available, correlate to manager
-                else {
-                    #region Verify manager correlation configuration and properties
-                    $actionMessage = "verifying manager correlation configuration and properties"
-                    if (-not[string]::IsNullOrEmpty($managerCorrelationValue)) {
-                        #region Get manager Microsoft Entra ID account
-                        # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-                        $actionMessage = "querying manager Microsoft Entra ID account"
-
-                        $baseUri = "https://graph.microsoft.com/"
-                        $getMicrosoftEntraIDManagerAccountSplatParams = @{
-                            Uri         = "$($baseUri)/v1.0/users?`$filter=$managerCorrelationField eq '$managerCorrelationValue'&`$select=$($managerAccountPropertiesToQuery -join ',')"
-                            Headers     = $headers
-                            Method      = "GET"
-                            Verbose     = $false
-                            ErrorAction = "Stop"
-                        }
-                        $currentMicrosoftEntraIDManagerAccount = $null
-                        $currentMicrosoftEntraIDManagerAccount = (Invoke-RestMethod @getMicrosoftEntraIDManagerAccountSplatParams).Value
-
-                        $currentMicrosoftEntraIDManagerAccountId = $currentMicrosoftEntraIDManagerAccount.Id
-
-                        Write-Verbose "Queried manager Microsoft Entra ID account where [$($managerCorrelationField)] = [$($managerCorrelationValue)]. Result: $($currentMicrosoftEntraIDManagerAccount | ConvertTo-Json)"
-                        #endregion Get manager Microsoft Entra ID account
-                    }
-                    #endregion Verify correlation configuration and properties
-                }
-                #endregion If Manager Reference is not available, correlate to manager
-
-                #region Calulate manager action
-                $actionMessage = "calculating manager action"
-
-                if (($currentMicrosoftEntraIDManagerAccountId | Measure-Object).count -eq 1) {
-                    $actionMessage = "comparing current manager to mapped manager"
-    
-                    if ($currentMicrosoftEntraIDManagerAccountId -ne $previousMicrosoftEntraIDManagerAccountId) {
-                        $actionManager = "Update"
-                    }
-                    else {
-                        $actionManager = "NoChanges"
-                    }            
-    
-                    Write-Verbose "Compared current manager to mapped manager. Result: $actionManager"
-                }
-                elseif (($currentMicrosoftEntraIDManagerAccountId | Measure-Object).count -gt 1) {
-                    $actionManager = "MultipleFound"
-                }
-                elseif (($currentMicrosoftEntraIDManagerAccountId | Measure-Object).count -eq 0) {
-                    if ([string]::IsNullOrEmpty($managerCorrelationValue)) {
-                        $actionManager = "CorrelationValueEmpty"
-                    }
-                    else {
-                        $actionManager = "NotFound"  
-                    }
-                }
-                #endregion Calulate manager action
-                
-                #region Calulate manager action
-                $actionMessage = "calculating manager action"
-
-                if (($currentMicrosoftEntraIDManagerAccountId | Measure-Object).count -eq 1) {
                     $actionManager = "Set"
                 }
-                elseif (($currentMicrosoftEntraIDManagerAccountId | Measure-Object).count -gt 1) {
-                    $actionManager = "MultipleFound"
+                else {
+                    $actionManager = "AccountReferenceEmpty"
                 }
-                elseif (($currentMicrosoftEntraIDManagerAccountId | Measure-Object).count -eq 0) {
-                    if ([string]::IsNullOrEmpty($managerCorrelationValue)) {
-                        $actionManager = "CorrelationValueEmpty"
-                    }
-                    else {
-                        $actionManager = "NotFound"
-                    }
-                }
+
                 #endregion Calulate manager action
 
                 switch ($actionManager) {
                     "Set" {
                         #region Set Manager
-                        # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-post-manager?view=graph-rest-1.0&tabs=http
-                        $actionMessage = "setting manager for created account"
-                        $baseUri = "https://graph.microsoft.com/"
+                        # API docs: https://learn.microsoft.com/en-us/graph/api/user-post-manager?view=graph-rest-1.0&tabs=http
+                        $actionMessage = "setting manager for created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json)"
 
-                        # Update account with all other fields than the required fields
                         $setManagerBody = @{
-                            "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($currentMicrosoftEntraIDManagerAccountId)"
+                            "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.ManagerAccount)"
                         }
 
                         $setManagerSplatParams = @{
-                            Uri         = "$($baseUri)/v1.0/users/$($outputContext.AccountReference)/manager/`$ref"
-                            # Headers     = $headers
+                            Uri         = "https://graph.microsoft.com/v1.0/users/$($outputContext.AccountReference)/manager/`$ref"
                             Method      = "PUT"
                             Body        = ($setManagerBody | ConvertTo-Json -Depth 10)
                             Verbose     = $false
@@ -543,57 +325,36 @@ try {
                         Write-Verbose "SplatParams: $($setManagerSplatParams | ConvertTo-Json)"
 
                         if (-Not($actionContext.DryRun -eq $true)) {
-                            # Add header after printing splat
+                            # Add Headers after printing splat
                             $setManagerSplatParams['Headers'] = $headers
 
-                            $setManager = Invoke-RestMethod @setManagerSplatParams
+                            $setManagerResponse = Invoke-RestMethod @setManagerSplatParams
+
+                            #region Set ManagerId
+                            $outputContext.Data | Add-Member -MemberType NoteProperty -Name "managerId" -Value $actionContext.References.ManagerAccount -Force
+                            #endregion Set ManagerId
 
                             $outputContext.AuditLogs.Add([PSCustomObject]@{
                                     # Action  = "" # Optional
-                                    Message = "Set manager for created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json). New value: $($currentMicrosoftEntraIDManagerAccountId | ConvertTo-Json)"
+                                    Message = "Set manager for created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json). New value: $($actionContext.References.ManagerAccount | ConvertTo-Json)."
                                     IsError = $false
                                 })
                         }
                         else {
-                            Write-Warning "DryRun: Would set manager for created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json). New value: $($currentMicrosoftEntraIDManagerAccountId | ConvertTo-Json)"
+                            Write-Warning "DryRun: Would set manager for created account. New value: $($actionContext.References.ManagerAccount | ConvertTo-Json)"
                         }
                         #endregion Set Manager
 
                         break
                     }
 
-                    "MultipleFound" {
-                        #region Multiple accounts found
-                        $actionMessage = "setting manager for created account"
-        
-                        # Throw terminal error
-                        throw "Multiple accounts found where [$($managerCorrelationField)] = [$($managerCorrelationValue)]. Please correct this so the persons are unique."
-                        #endregion Multiple accounts found
-        
-                        break
-                    }
-        
-                    "NotFound" {
+                    "AccountReferenceEmpty" {
                         #region No account found
                         $actionMessage = "setting manager for created account"
 
                         $outputContext.AuditLogs.Add([PSCustomObject]@{
                                 # Action  = "" # Optional
-                                Message = "Skipped setting manager for created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json). Reason: No account found where [$($managerCorrelationField)] = [$($managerCorrelationValue)]."
-                                IsError = $false
-                            })
-                        #endregion No account found
-        
-                        break
-                    }
-
-                    "CorrelationValueEmpty" {
-                        #region No account found
-                        $actionMessage = "setting manager for created account"
-
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                # Action  = "" # Optional
-                                Message = "Skipped setting manager for created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json). Reason: Manager correlation value for [$managerCorrelationField] is empty."
+                                Message = "Skipped setting manager for created account with AccountReference: $($outputContext.AccountReference | ConvertTo-Json). Reason: Manager AccountReference is empty."
                                 IsError = $false
                             })
                         #endregion No account found
@@ -611,8 +372,8 @@ try {
             #region Correlate account
             $actionMessage = "correlating to account"
 
-            $outputContext.AccountReference = "$($currentMicrosoftEntraIDAccount.id)"
-            $outputContext.Data = $currentMicrosoftEntraIDAccount
+            $outputContext.AccountReference = "$($correlatedAccount.id)"
+            $outputContext.Data = $correlatedAccount.PsObject.Copy()
 
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     Action  = "CorrelateAccount" # Optionally specify a different action for this audit log
@@ -638,7 +399,6 @@ try {
         }
     }
     #endregion Process
-    #endregion Account
 }
 catch {
     $ex = $PSItem
@@ -646,12 +406,14 @@ catch {
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-MicrosoftGraphAPIError -ErrorObject $ex
         $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
-        Write-Warning "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+        $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
     else {
         $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
-        Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
+
+    Write-Warning $warningMessage
 
     $outputContext.AuditLogs.Add([PSCustomObject]@{
             # Action  = "" # Optional
@@ -661,10 +423,7 @@ catch {
 }
 finally {
     # Check if auditLogs contains errors, if no errors are found, set success to true
-    if ($outputContext.AuditLogs.IsError -contains $true) {
-        $outputContext.Success = $false
-    }
-    else {
+    if (-NOT($outputContext.AuditLogs.IsError -contains $true)) {
         $outputContext.Success = $true
     }
 
