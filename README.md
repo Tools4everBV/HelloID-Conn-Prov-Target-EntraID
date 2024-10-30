@@ -84,6 +84,9 @@ This connector is designed exclusively for Entra ID and does not integrate with 
 #### ProxyAddress Expansion with Aliases
 - It cannot expand ProxyAddress with additional aliases, which is crucial for managing multiple email addresses for a single user.
 
+> [!NOTE]
+> If the `mail` and `userPrincipalName` fields are different, the `mail` value will automatically become the primary SMTP address, and the `userPrincipalName` will be added as an alias.
+
 #### Modifying showInAddressList
 - It cannot modify the showInAddressList attribute, which determines whether a user appears in the global address list (GAL).
 
