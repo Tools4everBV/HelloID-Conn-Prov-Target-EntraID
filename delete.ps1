@@ -206,7 +206,59 @@ try {
     #region Calulate action
     $actionMessage = "calculating action"
     if (($correlatedAccount | Measure-Object).count -eq 1) {
-        $actionAccount = "Delete"
+        if ($actionContext.Configuration.deleteAccount -eq $true) {
+            $actionAccount = "Delete"
+        }
+        else {
+            $actionMessage = "comparing current account to mapped properties"
+
+            # Set Previous data (if there are no changes between PreviousData and Data, HelloID will log "update finished with no changes")
+            $outputContext.PreviousData = $correlatedAccount.PsObject.Copy()
+    
+            # Create flat reference object from correlated account
+            $accountReferenceObject = ConvertTo-FlatObject -Object $correlatedAccount
+    
+            # Create flat difference object from mapped properties
+            $accountDifferenceObject = ConvertTo-FlatObject -Object $account
+    
+            $accountSplatCompareProperties = @{
+                ReferenceObject  = $accountReferenceObject.PSObject.Properties | Where-Object { $_.Name -in $accountPropertiesToCompare }
+                DifferenceObject = $accountDifferenceObject.PSObject.Properties | Where-Object { $_.Name -in $accountPropertiesToCompare }
+            }
+    
+            if ($null -ne $accountSplatCompareProperties.ReferenceObject -and $null -ne $accountSplatCompareProperties.DifferenceObject) {
+                $accountPropertiesChanged = Compare-Object @accountSplatCompareProperties -PassThru
+                $accountOldProperties = $accountPropertiesChanged | Where-Object { $_.SideIndicator -eq "<=" }
+                $accountNewProperties = $accountPropertiesChanged | Where-Object { $_.SideIndicator -eq "=>" }
+            }
+    
+            if ($accountNewProperties) {
+                # Create custom object with old and new values
+                $accountChangedPropertiesObject = [PSCustomObject]@{
+                    OldValues = @{}
+                    NewValues = @{}
+                }
+    
+                # Add the old properties to the custom object with old and new values
+                foreach ($accountOldProperty in $accountOldProperties) {
+                    $accountChangedPropertiesObject.OldValues.$($accountOldProperty.Name) = $accountOldProperty.Value
+                }
+    
+                # Add the new properties to the custom object with old and new values
+                foreach ($accountNewProperty in $accountNewProperties) {
+                    $accountChangedPropertiesObject.NewValues.$($accountNewProperty.Name) = $accountNewProperty.Value
+                }
+    
+                Write-Verbose "Changed properties: $($accountChangedPropertiesObject | ConvertTo-Json)"
+    
+                $actionAccount = "Update"
+            }
+            else {
+                $actionAccount = "NoChanges"
+            }            
+    
+            Write-Verbose "Compared current account to mapped properties. Result: $actionAccount"
+        }
     }
     elseif (($correlatedAccount | Measure-Object).count -eq 0) {
         $actionAccount = "NotFound"
@@ -253,6 +305,98 @@ try {
             break
         }
 
+        "Update" {
+            #region Update account
+            # API docs: https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0&tabs=http
+            $actionMessage = "updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+
+            # Set $outputContext.Data with correlated account
+            $outputContext.Data = $correlatedAccount.PsObject.Copy()
+            
+            # Create custom account object for update and set with updated properties
+            $updateAccountBody = [PSCustomObject]@{}
+            foreach ($accountProperty in $account.PsObject.Properties) {
+                $flatAccountProperty = ConvertTo-FlatObject -Object ($account | Select-Object $accountProperty.Name)
+                
+                foreach ($flatAccountPropertyName in ($flatAccountProperty | Get-Member -MemberType 'NoteProperty').Name) {
+                    if ($flatAccountPropertyName -in $accountNewProperties.Name) {
+                        if ($flatAccountPropertyName -like "*.*") {
+                            $parentPropertyName = ($flatAccountPropertyName -Split '\.')[0]
+                            $subPropertyName = ($flatAccountPropertyName -Split '\.')[1]
+                            $subPropertyValue = ($accountProperty.Value)."$subPropertyName"
+
+                            if (-not ($parentPropertyName -in $updateAccountBody.PSObject.Properties.Name)) {
+                                $updateAccountBody | Add-Member -MemberType NoteProperty -Name $parentPropertyName -Value ([PSCustomObject]@{}) -Force
+
+                                # Update $outputContext.Data with updated field
+                                $outputContext.Data | Add-Member -MemberType NoteProperty -Name $parentPropertyName -Value ([PSCustomObject]@{}) -Force
+                            }
+ 
+                            $updateAccountBody.$parentPropertyName | Add-Member -MemberType NoteProperty -Name $subPropertyName -Value $subPropertyValue -Force
+                        
+                            # Update $outputContext.Data with updated field
+                            $outputContext.Data.$parentPropertyName | Add-Member -MemberType NoteProperty -Name $subPropertyName -Value $subPropertyValue -Force
+                        }
+                        else {
+                            $updateAccountBody | Add-Member -MemberType NoteProperty -Name $accountProperty.Name -Value $accountProperty.Value -Force
+
+                            # Update $outputContext.Data with updated field
+                            $outputContext.Data | Add-Member -MemberType NoteProperty -Name $accountProperty.Name -Value $accountProperty.Value -Force
+                        }
+                    }
+                }
+            }
+            
+            # Convert the properties of custom account object for update containing "TRUE" or "FALSE" to boolean 
+            $updateAccountBody = Convert-StringToBoolean $updateAccountBody
+
+            $updateAccountSplatParams = @{
+                Uri         = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)"
+                Method      = "PATCH"
+                Body        = ($updateAccountBody | ConvertTo-Json -Depth 10)
+                ContentType = 'application/json; charset=utf-8'
+                Verbose     = $false
+                ErrorAction = "Stop"
+            }
+
+            Write-Verbose "SplatParams: $($updateAccountSplatParams | ConvertTo-Json)"
+
+            if (-Not($actionContext.DryRun -eq $true)) {
+                # Add header after printing splat
+                $updateAccountSplatParams['Headers'] = $headers
+
+                $updateAccountResponse = Invoke-RestMethod @updateAccountSplatParams
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = "Updated account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old values: $($accountChangedPropertiesObject.oldValues | ConvertTo-Json). New values: $($accountChangedPropertiesObject.newValues | ConvertTo-Json)."
+                        IsError = $false
+                    })
+            }
+            else {
+                Write-Warning "DryRun: Would update account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old values: $($accountChangedPropertiesObject.oldValues | ConvertTo-Json). New values: $($accountChangedPropertiesObject.newValues | ConvertTo-Json)."
+            }
+            #endregion Update account
+
+            break
+        }
+
+        "NoChanges" {
+            #region No changes
+            $actionMessage = "skipping updating account"
+
+            $outputContext.Data = $correlatedAccount.PsObject.Copy()
+
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = "Skipped updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: No changes."
+                    IsError = $false
+                })
+            #endregion No changes
+
+            break
+        }
+
         "NotFound" {
             #region No account found
             $actionMessage = "updating account"
@@ -291,11 +435,20 @@ catch {
     }
 
     if ($auditMessage -like "*ResourceNotFound*" -and $auditMessage -like "*Resource '$($actionContext.References.Account)' does not exist or one of its queried reference-property objects are not present*") {
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = "Skipped deleting account with ID: $($actionContext.References.Account). Reason: No account found with ID: $($actionContext.References.Account). Possibly indicating that it could be deleted, or not correlated."
-                IsError = $false
-            })
+        if ($actionContext.Configuration.deleteAccount -eq $true) {
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = "Skipped deleting account with ID: $($actionContext.References.Account). Reason: No account found with ID: $($actionContext.References.Account). Possibly indicating that it could be deleted, or not correlated."
+                    IsError = $false
+                })
+        }
+        else {
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = "Skipped updating account with ID: $($actionContext.References.Account). Reason: No account found with ID: $($actionContext.References.Account). Possibly indicating that it could be deleted, or not correlated."
+                    IsError = $false
+                })
+        }
     }
     else {
         Write-Warning $warningMessage
