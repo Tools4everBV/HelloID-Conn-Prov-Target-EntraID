@@ -240,7 +240,7 @@ try {
 
     $headers = New-AuthorizationHeaders @authorizationHeadersSplatParams
 
-    Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
+    Write-Verbose "Created authorization headers."
     #endregion Create authorization headers
 
     #region phoneAuthenticationMethod
@@ -310,8 +310,13 @@ try {
                     ErrorAction = "Stop"
                 }
 
+                Write-Verbose "SplatParams: $($createPhoneAuthenticationMethodSplatParams | ConvertTo-Json)"
+
                 if (-Not($actionContext.DryRun -eq $true)) {
-                    Write-Verbose "No current phone authentication method set for [$($actionContext.References.Permission.Name)]. SplatParams: $($createPhoneAuthenticationMethodSplatParams | ConvertTo-Json)"
+                    # Add Headers after printing splat
+                    $createPhoneAuthenticationMethodSplatParams['Headers'] = $headers
+
+                    Write-Verbose "No current phone authentication method set for [$($actionContext.References.Permission.Name)]."
 
                     $createdPhoneAuthenticationMethod = Invoke-RestMethod @createPhoneAuthenticationMethodSplatParams
 
@@ -349,8 +354,11 @@ try {
                     ErrorAction = "Stop"
                 }
 
+                Write-Verbose "SplatParams: $($updatePhoneAuthenticationMethodSplatParams | ConvertTo-Json)"
+
                 if (-Not($actionContext.DryRun -eq $true)) {
-                    Write-Verbose "SplatParams: $($updatePhoneAuthenticationMethodSplatParams | ConvertTo-Json)"
+                    # Add Headers after printing splat
+                    $updatePhoneAuthenticationMethodSplatParams['Headers'] = $headers
 
                     $updatedPhoneAuthenticationMethod = Invoke-RestMethod @updatePhoneAuthenticationMethodSplatParams
 

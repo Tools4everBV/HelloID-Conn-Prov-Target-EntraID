@@ -189,7 +189,7 @@ try {
 
     $headers = New-AuthorizationHeaders @authorizationHeadersSplatParams
 
-    Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
+    Write-Verbose "Created authorization headers."
     #endregion Create authorization headers
 
     #region emailAuthenticationMethod
@@ -239,14 +239,16 @@ try {
                     
             $deleteEmailAuthenticationMethodSplatParams = @{
                 Uri         = "$baseUri/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods/$($actionContext.References.Permission.Id)"
-                Headers     = $headers
                 Method      = "DELETE"
                 Verbose     = $false
                 ErrorAction = "Stop"
             }
 
+            Write-Verbose "SplatParams: $($deleteEmailAuthenticationMethodSplatParams | ConvertTo-Json)"
+
             if (-Not($actionContext.DryRun -eq $true)) {
-                Write-Verbose "SplatParams: $($deleteEmailAuthenticationMethodSplatParams | ConvertTo-Json)"
+                # Add Headers after printing splat
+                $deleteEmailAuthenticationMethodSplatParams['Headers'] = $headers
 
                 $deletedEmailAuthenticationMethod = Invoke-RestMethod @deleteEmailAuthenticationMethodSplatParams
 

@@ -198,7 +198,7 @@ try {
 
     $headers = New-AuthorizationHeaders @authorizationHeadersSplatParams
 
-    Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
+    Write-Verbose "Created authorization headers."
     #endregion Create authorization headers
 
     #region Get current emailAuthenticationMethod
@@ -258,15 +258,19 @@ try {
 
             $createEmailAuthenticationMethodSplatParams = @{
                 Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods"
-                Headers     = $headers
                 Method      = "POST"
                 Body        = ($createEmailAuthenticationMethodBody | ConvertTo-Json -Depth 10)
                 Verbose     = $false
                 ErrorAction = "Stop"
             }
 
+            Write-Verbose "SplatParams: $($createEmailAuthenticationMethodSplatParams | ConvertTo-Json)"
+
             if (-Not($actionContext.DryRun -eq $true)) {
-                Write-Verbose "No current email authentication method set for [$($actionContext.References.Permission.Name)]. SplatParams: $($createEmailAuthenticationMethodSplatParams | ConvertTo-Json)"
+                # Add Headers after printing splat
+                $createEmailAuthenticationMethodSplatParams['Headers'] = $headers
+
+                Write-Verbose "No current email authentication method set for [$($actionContext.References.Permission.Name)]."
 
                 $createdEmailAuthenticationMethod = Invoke-RestMethod @createEmailAuthenticationMethodSplatParams
 
@@ -296,15 +300,17 @@ try {
 
             $updateEmailAuthenticationMethodSplatParams = @{
                 Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods/$($actionContext.References.Permission.Id)"
-                Headers     = $headers
                 Method      = "PATCH"
                 Body        = ($updateEmailAuthenticationMethodBody | ConvertTo-Json -Depth 10)
                 Verbose     = $false
                 ErrorAction = "Stop"
             }
 
+            Write-Verbose "SplatParams: $($updateEmailAuthenticationMethodSplatParams | ConvertTo-Json)"
+
             if (-Not($actionContext.DryRun -eq $true)) {
-                Write-Verbose "SplatParams: $($updateEmailAuthenticationMethodSplatParams | ConvertTo-Json)"
+                # Add Headers after printing splat
+                $updateEmailAuthenticationMethodSplatParams['Headers'] = $headers
 
                 $updatedEmailAuthenticationMethod = Invoke-RestMethod @updateEmailAuthenticationMethodSplatParams
 
