@@ -12,7 +12,7 @@ $outputContext.Permissions.Add(
             Name                          = "email"
             Type                          = "emailMethod"
             OnlySetWhenEmpty              = $true
-            RemoveWhenRevokingEntitlement = $true
+            RemoveWhenRevokingEntitlement = $false
         }
     }
 )
