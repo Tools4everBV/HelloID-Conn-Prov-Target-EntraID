@@ -59,9 +59,14 @@
 - The script for dynamically managing permissions in Teams is similar to that for Groups, with an added filter for Teams-enabled groups. This is because a Team is inherently an M365 group, allowing us to manage its members within the group context rather than within Teams itself.
 
 ### Creating Guest Accounts
-- This connector allows the creation of Guest accounts through invitation, enabling users to log in using their invited email addresses. This feature can be enabled or disabled using the "Invite as Guest" option.
-- If direct creation of Microsoft Entra ID Guest accounts (with login names under the tenant domain) is preferred, ensure that the "Invite as Guest" option is not enabled.
+- Direct creation of Microsoft Entra ID Guest accounts (with login names under the tenant domain) is only supported and preferred. "Invite as Guest" is not supported.
 - By specifying the `userType` as 'Guest' in the mapping, Guest accounts with login names under the tenant domain can be created effortlessly.
+
+### Authentication Methods 
+- Granting and revoking `email` and `phone` authentication methods are supported.
+- Chance mapping in the `grantPermissions.ps1` according to the HelloID person model.
+- Configure `OnlySetWhenEmpty` and `RemoveWhenRevokingEntitlement` settings in `permissions.ps1` if needed.
+  - Revoking authentication methods can give issues when the default method is revoking before others. This is the reason that our best practice is setting this value to `$false`.
 
 ### Handling Null Values in Field Mapping
 - The script filters out all field mappings with the value `$null`. If the value in the HelloID person model is `$null`, it is also filtered out. If this behavior is not desired, change the mapping to complex and ensure you return a string with a `space` or `empty` when the value is `$null`. This way, the value is correctly handled by the script.
