@@ -59,7 +59,7 @@ function Resolve-MicrosoftGraphAPIError {
         catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
-
+        
         Write-Output $httpErrorObj
     }
 }

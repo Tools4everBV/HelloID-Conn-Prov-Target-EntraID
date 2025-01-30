@@ -12,7 +12,7 @@ $outputContext.Permissions.Add(
             Name                          = "mobile"
             Type                          = "phoneMethod"
             OnlySetWhenEmpty              = $true
-            RemoveWhenRevokingEntitlement = $true
+            RemoveWhenRevokingEntitlement = $false
         }
     }
 )
@@ -24,7 +24,7 @@ $outputContext.Permissions.Add(
             Name                          = "alternateMobile"
             Type                          = "phoneMethod"
             OnlySetWhenEmpty              = $true
-            RemoveWhenRevokingEntitlement = $true
+            RemoveWhenRevokingEntitlement = $false
         }
     }
 )
@@ -36,7 +36,7 @@ $outputContext.Permissions.Add(
             Name                          = "office"
             Type                          = "phoneMethod"
             OnlySetWhenEmpty              = $true
-            RemoveWhenRevokingEntitlement = $true
+            RemoveWhenRevokingEntitlement = $false
         }
     }
 )

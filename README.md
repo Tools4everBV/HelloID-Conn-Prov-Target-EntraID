@@ -36,7 +36,7 @@
 ## Requirements
 1. **HelloID Environment**:
    - Set up your _HelloID_ environment.
-   - Install the _HelloID_ Service Automation agent (cloud or on-prem).
+   - Install the _HelloID_ Provisioning agent (cloud or on-prem).
 1. **Graph API Credentials**:
    - Create an **App Registration** in Microsoft Entra ID.
    - Add API permissions for your app:
@@ -58,14 +58,17 @@
 ### Managing Permissions in Teams
 - The script for dynamically managing permissions in Teams is similar to that for Groups, with an added filter for Teams-enabled groups. This is because a Team is inherently an M365 group, allowing us to manage its members within the group context rather than within Teams itself.
 
-
 ### Creating Guest Accounts
-- This connector allows the creation of Guest accounts through invitation, enabling users to log in using their invited email addresses. This feature can be enabled or disabled using the "Invite as Guest" option.
-- If direct creation of Microsoft Entra ID Guest accounts (with login names under the tenant domain) is preferred, ensure that the "Invite as Guest" option is not enabled.
+- Direct creation of Microsoft Entra ID Guest accounts (with login names under the tenant domain) is only supported and preferred. "Invite as Guest" is not supported.
 - By specifying the `userType` as 'Guest' in the mapping, Guest accounts with login names under the tenant domain can be created effortlessly.
 
-### Handling Null Values in Field Mapping
+### Authentication Methods 
+- Granting and revoking `email` and `phone` authentication methods are supported.
+- Chance mapping in the `grantPermissions.ps1` according to the HelloID person model.
+- Configure `OnlySetWhenEmpty` and `RemoveWhenRevokingEntitlement` settings in `permissions.ps1` if needed.
+  - Revoking authentication methods can give issues when the default method is revoking before others. This is the reason that our best practice is setting this value to `$false`.
 
+### Handling Null Values in Field Mapping
 - The script filters out all field mappings with the value `$null`. If the value in the HelloID person model is `$null`, it is also filtered out. If this behavior is not desired, change the mapping to complex and ensure you return a string with a `space` or `empty` when the value is `$null`. This way, the value is correctly handled by the script.
 
 #### Example:
@@ -79,6 +82,21 @@ function getCompanyName() {
 }
 getCompanyName();
 ```
+**
+### Limitations Without Exchange Online Connector
+This connector is designed exclusively for Entra ID and does not integrate with Exchange Online. As a result, it has the following limitations compared to the built-in Azure AD connector:
+
+#### ProxyAddress Expansion with Aliases
+- It cannot expand ProxyAddress with additional aliases, which is crucial for managing multiple email addresses for a single user.
+
+> [!NOTE]
+> If the `mail` and `userPrincipalName` fields are different, the `mail` value will automatically become the primary SMTP address, and the `userPrincipalName` will be added as an alias.
+
+#### Modifying showInAddressList
+- It cannot modify the showInAddressList attribute, which determines whether a user appears in the global address list (GAL).
+
+#### Mailbox Creation/Activation
+- Mailboxes cannot be created or activated until a license is assigned, causing delays in email setup for new users.
 
 ## Introduction
 _HelloID-Conn-Prov-Target-Microsoft-Entra-ID_ is a _target_ connector. _Microsoft_ provides a set of REST API's that allow you to programmatically interact with its data. The Microsoft Entra ID connector uses the API endpoints listed in the table below.

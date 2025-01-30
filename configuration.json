@@ -33,16 +33,6 @@
     }
   },
   {
-    "key": "inviteAsGuest",
-    "type": "checkbox",
-    "defaultValue": false,
-    "templateOptions": {
-      "label": "Invite as Guest",
-      "description": "When toggled, this connector will create Guest accounts through invitation, allowing users to log in using their invited email addresses",
-      "required": false
-    }
-  },
-  {
     "key": "deleteAccount",
     "type": "checkbox",
     "defaultValue": false,
@@ -53,21 +43,21 @@
     }
   },
   {
-    "key": "setPrimaryManagerOnCreate",
+    "key": "setManagerOnCreate",
     "type": "checkbox",
     "defaultValue": false,
     "templateOptions": {
-      "label": "Set primary manager when an account is created",
+      "label": "Set manager when an account is created",
       "description": "",
       "required": false
     }
   },
   {
-    "key": "updatePrimaryManagerOnUpdate",
+    "key": "updateManagerOnUpdate",
     "type": "checkbox",
     "defaultValue": false,
     "templateOptions": {
-      "label": "Update manager when the account updated operation is performed",
+      "label": "Update manager when the account update operation is performed",
       "description": "",
       "required": false
     }

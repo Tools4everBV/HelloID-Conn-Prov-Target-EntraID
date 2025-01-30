@@ -46,8 +46,7 @@ function Resolve-MicrosoftGraphAPIError {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]
-        [object]
-        $ErrorObject
+        [object] $ErrorObject
     )
     process {
         $httpErrorObj = [PSCustomObject]@{
@@ -56,32 +55,35 @@ function Resolve-MicrosoftGraphAPIError {
             ErrorDetails     = $ErrorObject.Exception.Message
             FriendlyMessage  = $ErrorObject.Exception.Message
         }
+
         if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
             $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
         }
-        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
-            if ($null -ne $ErrorObject.Exception.Response) {
-                $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
-                if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
-                    $httpErrorObj.ErrorDetails = $streamReaderResponse
-                }
+        elseif ($ErrorObject.Exception -is [System.Net.WebException] -and $ErrorObject.Exception.Response) {
+            $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+            if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
+                $httpErrorObj.ErrorDetails = $streamReaderResponse
             }
         }
-        try {
-            $errorObjectConverted = $ErrorObject | ConvertFrom-Json -ErrorAction Stop
 
-            if ($null -ne $errorObjectConverted.error_description) {
+        try {
+            $errorObjectConverted = $httpErrorObj.ErrorDetails | ConvertFrom-Json -ErrorAction Stop
+
+            if ($errorObjectConverted.error_description) {
                 $httpErrorObj.FriendlyMessage = $errorObjectConverted.error_description
             }
-            elseif ($null -ne $errorObjectConverted.error) {
-                if ($null -ne $errorObjectConverted.error.message) {
-                    $httpErrorObj.FriendlyMessage = $errorObjectConverted.error.message
-                    if ($null -ne $errorObjectConverted.error.code) { 
-                        $httpErrorObj.FriendlyMessage = $httpErrorObj.FriendlyMessage + " Error code: $($errorObjectConverted.error.code)"
-                    }
+            elseif ($errorObjectConverted.error) {
+                $httpErrorObj.FriendlyMessage = $errorObjectConverted.error.message
+                if ($errorObjectConverted.error.code) {
+                    $httpErrorObj.FriendlyMessage += " Error code: $($errorObjectConverted.error.code)."
                 }
-                else {
-                    $httpErrorObj.FriendlyMessage = $errorObjectConverted.error
+                if ($errorObjectConverted.error.details) {
+                    if ($errorObjectConverted.error.details.message) {
+                        $httpErrorObj.FriendlyMessage += " Details message: $($errorObjectConverted.error.details.message)"
+                    }
+                    if ($errorObjectConverted.error.details.code) {
+                        $httpErrorObj.FriendlyMessage += " Details code: $($errorObjectConverted.error.details.code)."
+                    }
                 }
             }
             else {
@@ -91,6 +93,7 @@ function Resolve-MicrosoftGraphAPIError {
         catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
+
         Write-Output $httpErrorObj
     }
 }
@@ -240,7 +243,7 @@ try {
 
     $headers = New-AuthorizationHeaders @authorizationHeadersSplatParams
 
-    Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
+    Write-Verbose "Created authorization headers."
     #endregion Create authorization headers
 
     #region phoneAuthenticationMethod
@@ -310,8 +313,13 @@ try {
                     ErrorAction = "Stop"
                 }
 
+                Write-Verbose "SplatParams: $($createPhoneAuthenticationMethodSplatParams | ConvertTo-Json)"
+
                 if (-Not($actionContext.DryRun -eq $true)) {
-                    Write-Verbose "No current phone authentication method set for [$($actionContext.References.Permission.Name)]. SplatParams: $($createPhoneAuthenticationMethodSplatParams | ConvertTo-Json)"
+                    # Add Headers after printing splat
+                    $createPhoneAuthenticationMethodSplatParams['Headers'] = $headers
+
+                    Write-Verbose "No current phone authentication method set for [$($actionContext.References.Permission.Name)]."
 
                     $createdPhoneAuthenticationMethod = Invoke-RestMethod @createPhoneAuthenticationMethodSplatParams
 
@@ -349,8 +357,11 @@ try {
                     ErrorAction = "Stop"
                 }
 
+                Write-Verbose "SplatParams: $($updatePhoneAuthenticationMethodSplatParams | ConvertTo-Json)"
+
                 if (-Not($actionContext.DryRun -eq $true)) {
-                    Write-Verbose "SplatParams: $($updatePhoneAuthenticationMethodSplatParams | ConvertTo-Json)"
+                    # Add Headers after printing splat
+                    $updatePhoneAuthenticationMethodSplatParams['Headers'] = $headers
 
                     $updatedPhoneAuthenticationMethod = Invoke-RestMethod @updatePhoneAuthenticationMethodSplatParams
 

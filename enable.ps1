@@ -3,6 +3,7 @@
 # Update account
 # PowerShell V2
 #################################################
+
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
@@ -15,39 +16,11 @@ $InformationPreference = "Continue"
 $WarningPreference = "Continue"
 
 #region functions
-function Convert-StringToBoolean($obj) {
-    if ($obj -is [PSCustomObject]) {
-        foreach ($property in $obj.PSObject.Properties) {
-            $value = $property.Value
-            if ($value -is [string]) {
-                $lowercaseValue = $value.ToLower()
-                if ($lowercaseValue -eq "true") {
-                    $obj.$($property.Name) = $true
-                }
-                elseif ($lowercaseValue -eq "false") {
-                    $obj.$($property.Name) = $false
-                }
-            }
-            elseif ($value -is [PSCustomObject] -or $value -is [System.Collections.IDictionary]) {
-                $obj.$($property.Name) = Convert-StringToBoolean $value
-            }
-            elseif ($value -is [System.Collections.IList]) {
-                for ($i = 0; $i -lt $value.Count; $i++) {
-                    $value[$i] = Convert-StringToBoolean $value[$i]
-                }
-                $obj.$($property.Name) = $value
-            }
-        }
-    }
-    return $obj
-}
-
 function Resolve-MicrosoftGraphAPIError {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]
-        [object]
-        $ErrorObject
+        [object] $ErrorObject
     )
     process {
         $httpErrorObj = [PSCustomObject]@{
@@ -56,32 +29,35 @@ function Resolve-MicrosoftGraphAPIError {
             ErrorDetails     = $ErrorObject.Exception.Message
             FriendlyMessage  = $ErrorObject.Exception.Message
         }
+
         if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
             $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
         }
-        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
-            if ($null -ne $ErrorObject.Exception.Response) {
-                $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
-                if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
-                    $httpErrorObj.ErrorDetails = $streamReaderResponse
-                }
+        elseif ($ErrorObject.Exception -is [System.Net.WebException] -and $ErrorObject.Exception.Response) {
+            $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+            if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
+                $httpErrorObj.ErrorDetails = $streamReaderResponse
             }
         }
-        try {
-            $errorObjectConverted = $ErrorObject | ConvertFrom-Json -ErrorAction Stop
 
-            if ($null -ne $errorObjectConverted.error_description) {
+        try {
+            $errorObjectConverted = $httpErrorObj.ErrorDetails | ConvertFrom-Json -ErrorAction Stop
+
+            if ($errorObjectConverted.error_description) {
                 $httpErrorObj.FriendlyMessage = $errorObjectConverted.error_description
             }
-            elseif ($null -ne $errorObjectConverted.error) {
-                if ($null -ne $errorObjectConverted.error.message) {
-                    $httpErrorObj.FriendlyMessage = $errorObjectConverted.error.message
-                    if ($null -ne $errorObjectConverted.error.code) { 
-                        $httpErrorObj.FriendlyMessage = $httpErrorObj.FriendlyMessage + " Error code: $($errorObjectConverted.error.code)"
-                    }
+            elseif ($errorObjectConverted.error) {
+                $httpErrorObj.FriendlyMessage = $errorObjectConverted.error.message
+                if ($errorObjectConverted.error.code) {
+                    $httpErrorObj.FriendlyMessage += " Error code: $($errorObjectConverted.error.code)."
                 }
-                else {
-                    $httpErrorObj.FriendlyMessage = $errorObjectConverted.error
+                if ($errorObjectConverted.error.details) {
+                    if ($errorObjectConverted.error.details.message) {
+                        $httpErrorObj.FriendlyMessage += " Details message: $($errorObjectConverted.error.details.message)"
+                    }
+                    if ($errorObjectConverted.error.details.code) {
+                        $httpErrorObj.FriendlyMessage += " Details code: $($errorObjectConverted.error.details.code)."
+                    }
                 }
             }
             else {
@@ -91,95 +67,56 @@ function Resolve-MicrosoftGraphAPIError {
         catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
+
         Write-Output $httpErrorObj
     }
 }
 
-function New-AuthorizationHeaders {
-    [CmdletBinding()]
-    [OutputType([System.Collections.Generic.Dictionary[[String], [String]]])]
-    param(
-        [parameter(Mandatory)]
-        [string]
-        $TenantId,
-
-        [parameter(Mandatory)]
-        [string]
-        $ClientId,
-
-        [parameter(Mandatory)]
-        [string]
-        $ClientSecret
-    )
-    try {
-        Write-Verbose "Creating Access Token"
-        $baseUri = "https://login.microsoftonline.com/"
-        $authUri = $baseUri + "$TenantId/oauth2/token"
-    
-        $body = @{
-            grant_type    = "client_credentials"
-            client_id     = "$ClientId"
-            client_secret = "$ClientSecret"
-            resource      = "https://graph.microsoft.com"
+function Convert-StringToBoolean($obj) {
+    foreach ($property in $obj.PSObject.Properties) {
+        $value = $property.Value
+        if ($value -is [string]) {
+            try {
+                $obj.$($property.Name) = [System.Convert]::ToBoolean($value)
+            }
+            catch {
+                # Handle cases where conversion fails
+                $obj.$($property.Name) = $value
+            }
         }
-    
-        $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
-        $accessToken = $Response.access_token
-    
-        #Add the authorization header to the request
-        Write-Verbose 'Adding Authorization headers'
-
-        $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-        $headers.Add('Authorization', "Bearer $accesstoken")
-        $headers.Add('Accept', 'application/json')
-        $headers.Add('Content-Type', 'application/json')
-        # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
-        $headers.Add('ConsistencyLevel', 'eventual')
-
-        Write-Output $headers  
     }
-    catch {
-        throw $_
-    }
+    return $obj
 }
 
-function Resolve-HTTPError {
-    [CmdletBinding()]
+function ConvertTo-FlatObject {
     param (
-        [Parameter(Mandatory,
-            ValueFromPipeline
-        )]
-        [object]$ErrorObject
+        [Parameter(Mandatory = $true)]
+        [pscustomobject] $Object,
+        [string] $Prefix = ""
     )
-    process {
-        $httpErrorObj = [PSCustomObject]@{
-            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
-            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
-            RequestUri            = $ErrorObject.TargetObject.RequestUri
-            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
-            ErrorMessage          = ''
+    $result = [ordered]@{}
+
+    foreach ($property in $Object.PSObject.Properties) {
+        $name = if ($Prefix) { "$Prefix`.$($property.Name)" } else { $property.Name }
+
+        if ($property.Value -is [pscustomobject]) {
+            $flattenedSubObject = ConvertTo-FlatObject -Object $property.Value -Prefix $name
+            foreach ($subProperty in $flattenedSubObject.PSObject.Properties) {
+                $result[$subProperty.Name] = [string]$subProperty.Value
+            }
         }
-        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.Powershell.Commands.HttpResponseException') {
-            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
+        else {
+            $result[$name] = [string]$property.Value
         }
-        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
-            $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
-        }
-        Write-Output $httpErrorObj
     }
+    Write-Output ([PSCustomObject]$result)
 }
 #endregion functions
 
 try {
     #region account
-    # Define correlation
-    $correlationField = "id"
-    $correlationValue = $actionContext.References.Account
-
     # Define account object
-    $account = [PSCustomObject]$actionContext.Data
-    # Remove properties phoneAuthenticationMethod, emailAuthenticationMethod and manager as they are set within seperate actions
-    $account = $account | Select-Object -ExcludeProperty phoneAuthenticationMethod, emailAuthenticationMethod, manager
+    $account = [PSCustomObject]$actionContext.Data.PsObject.Copy()
 
     # Define properties to query
     $accountPropertiesToQuery = @("id") + $account.PsObject.Properties.Name | Select-Object -Unique
@@ -191,79 +128,103 @@ try {
             $account.PsObject.Properties.Remove("$($_.Name)")
         }
     }
-    # Convert the properties of account object containing "TRUE" or "FALSE" to boolean 
+    # Convert the properties of account object containing "TRUE" or "FALSE" to boolean
     $account = Convert-StringToBoolean $account
 
     # Define properties to compare for update
-    $accountPropertiesToCompare = $account.PsObject.Properties.Name
+    $accountPropertiesToCompare = ConvertTo-FlatObject -Object $account | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name
     #endRegion account
 
     #region Verify account reference
     $actionMessage = "verifying account reference"
+    
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
         throw "The account reference could not be found"
     }
     #endregion Verify account reference
-
-    #region Create authorization headers
-    $actionMessage = "creating authorization headers"
-
-    $authorizationHeadersSplatParams = @{
-        TenantId     = $actionContext.Configuration.TenantID
-        ClientId     = $actionContext.Configuration.AppId
-        ClientSecret = $actionContext.Configuration.AppSecret
+    
+    #region Create access token
+    $actionMessage = "creating access token"
+    
+    $createAccessTokenBody = @{
+        grant_type    = "client_credentials"
+        client_id     = $actionContext.Configuration.AppId
+        client_secret = $actionContext.Configuration.AppSecret
+        resource      = "https://graph.microsoft.com"
     }
-
-    $headers = New-AuthorizationHeaders @authorizationHeadersSplatParams
-
-    Write-Verbose "Created authorization headers."
-    #endregion Create authorization headers
-
-    #region Get Microsoft Entra ID account
-    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
-    $actionMessage = "querying Microsoft Entra ID account"
-
-    $baseUri = "https://graph.microsoft.com/"
-    $getMicrosoftEntraIDAccountSplatParams = @{
-        Uri         = "$($baseUri)/v1.0/users?`$filter=$correlationField eq '$correlationValue'&`$select=$($accountPropertiesToQuery -join ',')"
+    
+    $createAccessTokenSplatParams = @{
+        Uri         = "https://login.microsoftonline.com/$($actionContext.Configuration.TenantID)/oauth2/token"
         Headers     = $headers
+        Body        = $createAccessTokenBody
+        Method      = "POST"
+        ContentType = "application/x-www-form-urlencoded"
+        Verbose     = $false
+        ErrorAction = "Stop"
+    }
+    
+    $createAccessTokenResonse = Invoke-RestMethod @createAccessTokenSplatParams
+    
+    Write-Verbose "Created access token. Expires in: $($createAccessTokenResonse.expires_in | ConvertTo-Json)"
+    #endregion Create access token
+    
+    #region Create headers
+    $actionMessage = "creating headers"
+    
+    $headers = @{
+        "Accept"          = "application/json"
+        "Content-Type"    = "application/json;charset=utf-8"
+        "Mwp-Api-Version" = "1.0"
+    }
+    
+    Write-Verbose "Created headers. Result (without Authorization): $($headers | ConvertTo-Json)."
+
+    # Add Authorization after printing splat
+    $headers['Authorization'] = "Bearer $($createAccessTokenResonse.access_token)"
+    #endregion Create headers
+
+    #region Get account
+    # API docs: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0&tabs=http
+    $actionMessage = "querying account with ID: $($actionContext.References.Account)"
+
+    $getEntraIDAccountSplatParams = @{
+        Uri         = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)?`$select=$($accountPropertiesToQuery -join ',')"
         Method      = "GET"
         Verbose     = $false
         ErrorAction = "Stop"
     }
-    $currentMicrosoftEntraIDAccount = $null
-    $currentMicrosoftEntraIDAccount = (Invoke-RestMethod @getMicrosoftEntraIDAccountSplatParams).Value
 
-    Write-Information "Queried Microsoft Entra ID account where [$($correlationField)] = [$($correlationValue)]. Result: $($currentMicrosoftEntraIDAccount | ConvertTo-Json)"
-    #endregion Get Microsoft Entra ID account
+    Write-Verbose "SplatParams: $($getEntraIDAccountSplatParams | ConvertTo-Json)"
 
-    #region Account
+    # Add header after printing splat
+    $getEntraIDAccountSplatParams['Headers'] = $headers
+
+    $getEntraIDAccountResponse = $null
+    $getEntraIDAccountResponse = Invoke-RestMethod @getEntraIDAccountSplatParams
+    $correlatedAccount = $getEntraIDAccountResponse
+        
+    Write-Verbose "Queried account with ID: $($actionContext.References.Account). Result: $($correlatedAccount | ConvertTo-Json)"
+    #endregion Get account
+
     #region Calulate action
     $actionMessage = "calculating action"
-    if (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 1) {
+    if (($correlatedAccount | Measure-Object).count -eq 1) {
         $actionMessage = "comparing current account to mapped properties"
 
         # Set Previous data (if there are no changes between PreviousData and Data, HelloID will log "update finished with no changes")
-        $outputContext.PreviousData = $currentMicrosoftEntraIDAccount
+        $outputContext.PreviousData = $correlatedAccount.PsObject.Copy()
 
-        # Create reference object from correlated account
-        $accountReferenceObject = [PSCustomObject]@{}
-        foreach ($currentMicrosoftEntraIDAccountProperty in ($currentMicrosoftEntraIDAccount | Get-Member -MemberType NoteProperty)) {
-            # Add property using -join to support array values
-            $accountReferenceObject | Add-Member -MemberType NoteProperty -Name $currentMicrosoftEntraIDAccountProperty.Name -Value ($currentMicrosoftEntraIDAccount.$($currentMicrosoftEntraIDAccountProperty.Name) -join ",") -Force
-        }
+        # Create flat reference object from correlated account
+        $accountReferenceObject = ConvertTo-FlatObject -Object $correlatedAccount
 
-        # Create difference object from mapped properties
-        $accountDifferenceObject = [PSCustomObject]@{}
-        foreach ($accountAccountProperty in $account.PSObject.Properties) {
-            # Add property using -join to support array values
-            $accountDifferenceObject | Add-Member -MemberType NoteProperty -Name $accountAccountProperty.Name -Value ($accountAccountProperty.Value -join ",") -Force
-        }
+        # Create flat difference object from mapped properties
+        $accountDifferenceObject = ConvertTo-FlatObject -Object $account
 
         $accountSplatCompareProperties = @{
             ReferenceObject  = $accountReferenceObject.PSObject.Properties | Where-Object { $_.Name -in $accountPropertiesToCompare }
             DifferenceObject = $accountDifferenceObject.PSObject.Properties | Where-Object { $_.Name -in $accountPropertiesToCompare }
         }
+
         if ($null -ne $accountSplatCompareProperties.ReferenceObject -and $null -ne $accountSplatCompareProperties.DifferenceObject) {
             $accountPropertiesChanged = Compare-Object @accountSplatCompareProperties -PassThru
             $accountOldProperties = $accountPropertiesChanged | Where-Object { $_.SideIndicator -eq "<=" }
@@ -271,8 +232,25 @@ try {
         }
 
         if ($accountNewProperties) {
+            # Create custom object with old and new values
+            $accountChangedPropertiesObject = [PSCustomObject]@{
+                OldValues = @{}
+                NewValues = @{}
+            }
+
+            # Add the old properties to the custom object with old and new values
+            foreach ($accountOldProperty in $accountOldProperties) {
+                $accountChangedPropertiesObject.OldValues.$($accountOldProperty.Name) = $accountOldProperty.Value
+            }
+
+            # Add the new properties to the custom object with old and new values
+            foreach ($accountNewProperty in $accountNewProperties) {
+                $accountChangedPropertiesObject.NewValues.$($accountNewProperty.Name) = $accountNewProperty.Value
+            }
+
+            Write-Verbose "Changed properties: $($accountChangedPropertiesObject | ConvertTo-Json)"
+
             $actionAccount = "Update"
-            Write-Information "Account property(s) required to update: $($accountNewProperties.Name -join ', ')"
         }
         else {
             $actionAccount = "NoChanges"
@@ -280,56 +258,63 @@ try {
 
         Write-Verbose "Compared current account to mapped properties. Result: $actionAccount"
     }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -gt 1) {
-        $actionAccount = "MultipleFound"
-    }
-    elseif (($currentMicrosoftEntraIDAccount | Measure-Object).count -eq 0) {
+    elseif (($correlatedAccount | Measure-Object).count -eq 0) {
         $actionAccount = "NotFound"
     }
-
-    Write-Information "Check if current account can be found. Result: $actionAccount"
+    elseif (($correlatedAccount | Measure-Object).count -gt 1) {
+        $actionAccount = "MultipleFound"
+    }
     #endregion Calulate action
-
+    
     #region Process
     switch ($actionAccount) {
         "Update" {
             #region Update account
-            # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0&tabs=http
-            $actionMessage = "updating account"
-            # Create custom object with old and new values (for logging)
-            $accountChangedPropertiesObject = [PSCustomObject]@{
-                OldValues = @{}
-                NewValues = @{}
+            # API docs: https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0&tabs=http
+            $actionMessage = "updating account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+
+            # Set $outputContext.Data with correlated account
+            $outputContext.Data = $correlatedAccount.PsObject.Copy()
+            
+            # Create custom account object for update and set with updated properties
+            $updateAccountBody = [PSCustomObject]@{}
+            foreach ($accountProperty in $account.PsObject.Properties) {
+                $flatAccountProperty = ConvertTo-FlatObject -Object ($account | Select-Object $accountProperty.Name)
+                
+                foreach ($flatAccountPropertyName in ($flatAccountProperty | Get-Member -MemberType 'NoteProperty').Name) {
+                    if ($flatAccountPropertyName -in $accountNewProperties.Name) {
+                        if ($flatAccountPropertyName -like "*.*") {
+                            $parentPropertyName = ($flatAccountPropertyName -Split '\.')[0]
+                            $subPropertyName = ($flatAccountPropertyName -Split '\.')[1]
+                            $subPropertyValue = ($accountProperty.Value)."$subPropertyName"
+
+                            if (-not ($parentPropertyName -in $updateAccountBody.PSObject.Properties.Name)) {
+                                $updateAccountBody | Add-Member -MemberType NoteProperty -Name $parentPropertyName -Value ([PSCustomObject]@{}) -Force
+
+                                # Update $outputContext.Data with updated field
+                                $outputContext.Data | Add-Member -MemberType NoteProperty -Name $parentPropertyName -Value ([PSCustomObject]@{}) -Force
+                            }
+ 
+                            $updateAccountBody.$parentPropertyName | Add-Member -MemberType NoteProperty -Name $subPropertyName -Value $subPropertyValue -Force
+                        
+                            # Update $outputContext.Data with updated field
+                            $outputContext.Data.$parentPropertyName | Add-Member -MemberType NoteProperty -Name $subPropertyName -Value $subPropertyValue -Force
+                        }
+                        else {
+                            $updateAccountBody | Add-Member -MemberType NoteProperty -Name $accountProperty.Name -Value $accountProperty.Value -Force
+
+                            # Update $outputContext.Data with updated field
+                            $outputContext.Data | Add-Member -MemberType NoteProperty -Name $accountProperty.Name -Value $accountProperty.Value -Force
+                        }
+                    }
+                }
             }
-
-            foreach ($accountOldProperty in ($accountOldProperties | Where-Object { $_.Name -in $accountNewProperties.Name })) {
-                $accountChangedPropertiesObject.OldValues.$($accountOldProperty.Name) = $accountOldProperty.Value
-            }
-
-            foreach ($accountNewProperty in $accountNewProperties) {
-                $accountChangedPropertiesObject.NewValues.$($accountNewProperty.Name) = $accountNewProperty.Value
-            }
-
-            $baseUri = "https://graph.microsoft.com/"
-
-            # Convert Array to PsCustomObject
-            $outputContextDataOutput = $currentMicrosoftEntraIDAccount | ConvertTo-Json | ConvertFrom-Json
-
-            # Update account with updated fields
-            $updateAccountBody = @{}
-            foreach ($accountNewProperty in $accountNewProperties) {
-                [void]$updateAccountBody.Add($accountNewProperty.Name, $accountNewProperty.Value)
-
-                # Update output data with new account data
-                $outputContextDataOutput.$($accountNewProperty.Name) = $accountNewProperty.Value
-            }
-
-            # Set updated outputContext data
-            $outputContext.Data = $outputContextDataOutput
+            
+            # Convert the properties of custom account object for update containing "TRUE" or "FALSE" to boolean 
+            $updateAccountBody = Convert-StringToBoolean $updateAccountBody
 
             $updateAccountSplatParams = @{
-                Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)"
-                # Headers     = $headers
+                Uri         = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)"
                 Method      = "PATCH"
                 Body        = ($updateAccountBody | ConvertTo-Json -Depth 10)
                 ContentType = 'application/json; charset=utf-8'
@@ -343,16 +328,16 @@ try {
                 # Add header after printing splat
                 $updateAccountSplatParams['Headers'] = $headers
 
-                $updatedAccount = Invoke-RestMethod @updateAccountSplatParams
+                $updateAccountResponse = Invoke-RestMethod @updateAccountSplatParams
 
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
-                        Message = "Updated account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old values: $($accountChangedPropertiesObject.oldValues | ConvertTo-Json). New values: $($accountChangedPropertiesObject.newValues | ConvertTo-Json)"
+                        Message = "Updated account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old values: $($accountChangedPropertiesObject.oldValues | ConvertTo-Json). New values: $($accountChangedPropertiesObject.newValues | ConvertTo-Json)."
                         IsError = $false
                     })
             }
             else {
-                Write-Warning "DryRun: Would update account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old values: $($accountChangedPropertiesObject.oldValues | ConvertTo-Json). New values: $($accountChangedPropertiesObject.newValues | ConvertTo-Json)"
+                Write-Warning "DryRun: Would update account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Old values: $($accountChangedPropertiesObject.oldValues | ConvertTo-Json). New values: $($accountChangedPropertiesObject.newValues | ConvertTo-Json)."
             }
             #endregion Update account
 
@@ -363,7 +348,7 @@ try {
             #region No changes
             $actionMessage = "skipping updating account"
 
-            $outputContext.Data = $currentMicrosoftEntraIDAccount
+            $outputContext.Data = $correlatedAccount.PsObject.Copy()
 
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
@@ -375,30 +360,29 @@ try {
             break
         }
 
+        "NotFound" {
+            #region No account found
+            $actionMessage = "updating account"
+
+            # Throw terminal error
+            throw "No account found with ID: $($actionContext.References.Account)."
+            #endregion No account found
+
+            break
+        }
+
         "MultipleFound" {
             #region Multiple accounts found
             $actionMessage = "updating account"
 
             # Throw terminal error
-            throw "Multiple accounts found where [$($correlationField)] = [$($correlationValue)]. Please correct this so the persons are unique."
+            throw "Multiple accounts found with ID: $($actionContext.References.Account). Please correct this to ensure the correlation results in a single unique account."
             #endregion Multiple accounts found
-
-            break
-        }
-
-        "NotFound" {
-            #region No account found
-            $actionMessage = "updating account"
-        
-            # Throw terminal error
-            throw "No account found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
-            #endregion No account found
 
             break
         }
     }
     #endregion Process
-    #endregion Account
 }
 catch {
     $ex = $PSItem
@@ -406,12 +390,14 @@ catch {
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-MicrosoftGraphAPIError -ErrorObject $ex
         $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
-        Write-Warning "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+        $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
     else {
         $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
-        Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
+
+    Write-Warning $warningMessage
 
     $outputContext.AuditLogs.Add([PSCustomObject]@{
             # Action  = "" # Optional
@@ -421,10 +407,7 @@ catch {
 }
 finally {
     # Check if auditLogs contains errors, if no errors are found, set success to true
-    if ($outputContext.AuditLogs.IsError -contains $true) {
-        $outputContext.Success = $false
-    }
-    else {
+    if (-NOT($outputContext.AuditLogs.IsError -contains $true)) {
         $outputContext.Success = $true
     }
 }
