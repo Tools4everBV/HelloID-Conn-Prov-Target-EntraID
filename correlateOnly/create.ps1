@@ -39,7 +39,7 @@ function Resolve-MicrosoftGraphAPIError {
                 $httpErrorObj.FriendlyMessage = $errorObjectConverted.error_description
             }
             elseif ($errorObjectConverted.error) {
-                $httpErrorObj.FriendlyMesage = $errorObjectConverted.error.message
+                $httpErrorObj.FriendlyMessage = $errorObjectConverted.error.message
                 if ($errorObjectConverted.error.code) {
                     $httpErrorObj.FriendlyMessage += " Error code: $($errorObjectConverted.error.code)."
                 }
