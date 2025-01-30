@@ -33,36 +33,6 @@
     }
   },
   {
-    "key": "deleteAccount",
-    "type": "checkbox",
-    "defaultValue": false,
-    "templateOptions": {
-      "label": "Delete the account when revoking the entitlement",
-      "description": "",
-      "required": false
-    }
-  },
-  {
-    "key": "setManagerOnCreate",
-    "type": "checkbox",
-    "defaultValue": false,
-    "templateOptions": {
-      "label": "Set manager when an account is created",
-      "description": "",
-      "required": false
-    }
-  },
-  {
-    "key": "updateManagerOnUpdate",
-    "type": "checkbox",
-    "defaultValue": false,
-    "templateOptions": {
-      "label": "Update manager when the account update operation is performed",
-      "description": "",
-      "required": false
-    }
-  },
-  {
     "key": "isDebug",
     "type": "checkbox",
     "defaultValue": false,
