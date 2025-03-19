@@ -1,18 +1,11 @@
 #################################################
-# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Permissions-Licenses-Grant
-# Grant license to account
+# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Permissions-Licenses-Import
+# Correlate to permission
 # PowerShell V2
 #################################################
+
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
-
-# Set debug logging
-switch ($actionContext.Configuration.isDebug) {
-    $true { $VerbosePreference = "Continue" }
-    $false { $VerbosePreference = "SilentlyContinue" }
-}
-$InformationPreference = "Continue"
-$WarningPreference = "Continue"
 
 #region functions
 function Resolve-MicrosoftGraphAPIError {
@@ -66,21 +59,14 @@ function Resolve-MicrosoftGraphAPIError {
         catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
-
-        Write-Output $httpErrorObj
+        
+        # Write-Output $httpErrorObj
+        return $httpErrorObj
     }
 }
 #endregion functions
 
 try {
-    #region Verify account reference
-    $actionMessage = "verifying account reference"
-    if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
-        throw "The account reference could not be found"
-    }
-    #endregion Verify account reference
-
-    #region Create authorization headers
     $actionMessage = "creating access token"
     $createAccessTokenBody = @{
         grant_type    = "client_credentials"
@@ -107,46 +93,69 @@ try {
         "Mwp-Api-Version"  = "1.0"
         "ConsistencyLevel" = "eventual"
     }
-    #endregion Create authorization headers
 
-    #region Grant license to account
-    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-assignlicense?view=graph-rest-1.0&tabs=http
-    $actionMessage = "granting license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.reference)] to account"
+    # API docs: https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http
+    $actionMessage = "querying Entra ID Licenses"
+    $entraIDLicenses = @()
+    $uri = "https://graph.microsoft.com/v1.0/subscribedSkus?`$select=skuId,skuPartNumber"
+    do {
+        $getM365GroupsSplatParams = @{
+            Uri         = $uri
+            Headers     = $headers
+            Method      = 'GET'
+            ContentType = 'application/json; charset=utf-8'
+            Verbose     = $false
+            ErrorAction = "Stop"
+        }
+        $response = Invoke-RestMethod @getM365GroupsSplatParams
+        $entraIDLicenses += $response.value
+        Write-Information "Successfully queried [$($entraIDLicenses.count)] existing Entra ID Licenses"
+        $uri = $response.'@odata.nextLink'
+    } while ($uri)
 
-    $grantPermissionBody = @{
-        addLicenses    = @(
-            @{
-                skuId = $($actionContext.References.Permission.reference)
-            }
-        )
-        removeLicenses = $null
+    # Store the licenses in a hashtable for easy lookup by skuId
+    $licenseLookup = @{}
+    foreach ($license in $entraIDLicenses) {
+        $licenseLookup[$license.skuId] = $license.skuPartNumber
     }
-            
-    $baseUri = "https://graph.microsoft.com/"
-    $grantPermissionSplatParams = @{
-        Uri         = "$($baseUri)/v1.0/users/$($actionContext.References.Account)/assignLicense"
-        Headers     = $headers
-        Method      = "POST"
-        Body        = ($grantPermissionBody | ConvertTo-Json -Depth 10)
-        Verbose     = $false
-        ErrorAction = "Stop"
-    }
 
-    if (-Not($actionContext.DryRun -eq $true)) {
-        Write-Verbose "SplatParams: $($grantPermissionSplatParams | ConvertTo-Json)"
+    # API docs: https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http
+    $actionMessage = "querying accounts with licenses"
+    $existingAccounts = @()
+    $uri = "https://graph.microsoft.com/v1.0/users?`$select=id,displayName,assignedLicenses"
+    do {
+        $getAccountsSplatParams = @{
+            Uri         = $uri
+            Headers     = $headers
+            Method      = 'GET'
+            ContentType = 'application/json; charset=utf-8'
+            Verbose     = $false
+            ErrorAction = "Stop"
+        }
+        $response = Invoke-RestMethod @getAccountsSplatParams
+        $existingAccounts += $response.value
+        Write-Information "Successfully queried [$($existingAccounts.count)] existing accounts"
+        $uri = $response.'@odata.nextLink'
+    } while ($uri)
 
-        $grantedPermission = Invoke-RestMethod @grantPermissionSplatParams
-
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = "Granted license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.reference)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
-                IsError = $false
-            })
+    $actionMessage = "returning licenses to HelloID for each account"
+    foreach ($account in $existingAccounts) {  
+        foreach ($assignedLicense in $account.assignedLicenses.skuId) {  
+            $licenseName = $licenseLookup[$assignedLicense]
+            Write-Output @(
+                @{
+                    AccountReferences   = @( 
+                        $account.id
+                    )
+                    PermissionReference = @{
+                        Reference = $assignedLicense
+                    }
+                    Description         = "License - $licenseName"
+                    DisplayName         = $licenseName
+                }
+            )
+        }     
     }
-    else {
-        Write-Warning "DryRun: Would grant license [$($actionContext.References.Permission.reference)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
-    }
-    #endregion Grant license to account
 }
 catch {
     $ex = $PSItem
@@ -160,21 +169,6 @@ catch {
         $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
         $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
-
     Write-Warning $warningMessage
-
-    $outputContext.AuditLogs.Add([PSCustomObject]@{
-            # Action  = "" # Optional
-            Message = $auditMessage
-            IsError = $true
-        })
-}
-finally {
-    # Check if auditLogs contains errors, if no errors are found, set success to true
-    if ($outputContext.AuditLogs.IsError -contains $true) {
-        $outputContext.Success = $false
-    }
-    else {
-        $outputContext.Success = $true
-    }
+    Write-Error $auditMessage
 }

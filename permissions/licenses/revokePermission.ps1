@@ -15,33 +15,6 @@ $InformationPreference = "Continue"
 $WarningPreference = "Continue"
 
 #region functions
-function Convert-StringToBoolean($obj) {
-    if ($obj -is [PSCustomObject]) {
-        foreach ($property in $obj.PSObject.Properties) {
-            $value = $property.Value
-            if ($value -is [string]) {
-                $lowercaseValue = $value.ToLower()
-                if ($lowercaseValue -eq "true") {
-                    $obj.$($property.Name) = $true
-                }
-                elseif ($lowercaseValue -eq "false") {
-                    $obj.$($property.Name) = $false
-                }
-            }
-            elseif ($value -is [PSCustomObject] -or $value -is [System.Collections.IDictionary]) {
-                $obj.$($property.Name) = Convert-StringToBoolean $value
-            }
-            elseif ($value -is [System.Collections.IList]) {
-                for ($i = 0; $i -lt $value.Count; $i++) {
-                    $value[$i] = Convert-StringToBoolean $value[$i]
-                }
-                $obj.$($property.Name) = $value
-            }
-        }
-    }
-    return $obj
-}
-
 function Resolve-MicrosoftGraphAPIError {
     [CmdletBinding()]
     param (
@@ -97,80 +70,6 @@ function Resolve-MicrosoftGraphAPIError {
         Write-Output $httpErrorObj
     }
 }
-
-function New-AuthorizationHeaders {
-    [CmdletBinding()]
-    [OutputType([System.Collections.Generic.Dictionary[[String], [String]]])]
-    param(
-        [parameter(Mandatory)]
-        [string]
-        $TenantId,
-
-        [parameter(Mandatory)]
-        [string]
-        $ClientId,
-
-        [parameter(Mandatory)]
-        [string]
-        $ClientSecret
-    )
-    try {
-        Write-Verbose "Creating Access Token"
-        $baseUri = "https://login.microsoftonline.com/"
-        $authUri = $baseUri + "$TenantId/oauth2/token"
-    
-        $body = @{
-            grant_type    = "client_credentials"
-            client_id     = "$ClientId"
-            client_secret = "$ClientSecret"
-            resource      = "https://graph.microsoft.com"
-        }
-    
-        $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
-        $accessToken = $Response.access_token
-    
-        #Add the authorization header to the request
-        Write-Verbose 'Adding Authorization headers'
-
-        $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-        $headers.Add('Authorization', "Bearer $accesstoken")
-        $headers.Add('Accept', 'application/json')
-        $headers.Add('Content-Type', 'application/json')
-        # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
-        $headers.Add('ConsistencyLevel', 'eventual')
-
-        Write-Output $headers  
-    }
-    catch {
-        throw $_
-    }
-}
-
-function Resolve-HTTPError {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory,
-            ValueFromPipeline
-        )]
-        [object]$ErrorObject
-    )
-    process {
-        $httpErrorObj = [PSCustomObject]@{
-            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
-            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
-            RequestUri            = $ErrorObject.TargetObject.RequestUri
-            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
-            ErrorMessage          = ''
-        }
-        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.Powershell.Commands.HttpResponseException') {
-            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
-        }
-        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
-            $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
-        }
-        Write-Output $httpErrorObj
-    }
-}
 #endregion functions
 
 try {
@@ -182,26 +81,41 @@ try {
     #endregion Verify account reference
 
     #region Create authorization headers
-    $actionMessage = "creating authorization headers"
-
-    $authorizationHeadersSplatParams = @{
-        TenantId     = $actionContext.Configuration.TenantID
-        ClientId     = $actionContext.Configuration.AppId
-        ClientSecret = $actionContext.Configuration.AppSecret
+    $actionMessage = "creating access token"
+    $createAccessTokenBody = @{
+        grant_type    = "client_credentials"
+        client_id     = $actionContext.Configuration.AppId
+        client_secret = $actionContext.Configuration.AppSecret
+        resource      = "https://graph.microsoft.com"
     }
+    $createAccessTokenSplatParams = @{
+        Uri         = "https://login.microsoftonline.com/$($actionContext.Configuration.TenantID)/oauth2/token"
+        Headers     = $headers
+        Body        = $createAccessTokenBody
+        Method      = "POST"
+        ContentType = "application/x-www-form-urlencoded"
+        Verbose     = $false
+        ErrorAction = "Stop"
+    }
+    $createAccessTokenResonse = Invoke-RestMethod @createAccessTokenSplatParams
 
-    $headers = New-AuthorizationHeaders @authorizationHeadersSplatParams
-
-    Write-Verbose "Created authorization headers. Result: $($headers | ConvertTo-Json)"
+    $actionMessage = "creating headers"
+    $headers = @{
+        "Accept"           = "application/json"
+        "Authorization"    = "Bearer $($createAccessTokenResonse.access_token)"
+        "Content-Type"     = "application/json;charset=utf-8"
+        "Mwp-Api-Version"  = "1.0"
+        "ConsistencyLevel" = "eventual"
+    }
     #endregion Create authorization headers
 
     #region Revoke permission from account
     # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-assignlicense?view=graph-rest-1.0&tabs=http
-    $actionMessage = "revoking license [$($actionContext.References.Permissioskuidn.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account"
+    $actionMessage = "revoking license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.reference)] from account"
 
     $revokePermissionBody = @{
         addLicenses    = $null
-        removeLicenses = @($($actionContext.References.Permission.SkuId))
+        removeLicenses = @($($actionContext.References.Permission.reference))
     }
             
     $baseUri = "https://graph.microsoft.com/"
@@ -221,12 +135,12 @@ try {
 
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
-                Message = "Revoked license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+                Message = "Revoked license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.reference)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
                 IsError = $false
             })
     }
     else {
-        Write-Warning "DryRun: Would revoke license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+        Write-Warning "DryRun: Would revoke license [$($actionContext.References.Permission.reference)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
     }
     #endregion Revoke permission from account
 }
@@ -248,7 +162,7 @@ catch {
     if ($auditMessage -like "*User does not have a corresponding license*") {
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
-                Message = "Skipped revoking license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User does not have the corresponding license."
+                Message = "Skipped revoking license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.reference)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User does not have the corresponding license."
                 IsError = $false
             })
     }
@@ -257,7 +171,7 @@ catch {
     elseif ($auditMessage -like "*License $($pRef.skuId) does not correspond to a valid company License*") {
         $auditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
-                Message = "Skipped revoking license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: License does not correspond to a valid company license."
+                Message = "Skipped revoking license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.reference)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: License does not correspond to a valid company license."
                 IsError = $false
             }) 
     }

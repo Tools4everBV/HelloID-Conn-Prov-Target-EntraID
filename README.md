@@ -11,6 +11,7 @@
 
 - [HelloID-Conn-Prov-Target-Microsoft-Entra-ID](#helloid-conn-prov-target-microsoft-entra-id)
   - [Table of contents](#table-of-contents)
+  - [Supported features:](#supported-features)
   - [Requirements](#requirements)
   - [Remarks](#remarks)
     - [Account Creation Limitations](#account-creation-limitations)
@@ -18,8 +19,13 @@
     - [Managing Permissions in Teams](#managing-permissions-in-teams)
     - [Creating Guest Accounts](#creating-guest-accounts)
     - [Inviting Guest Accounts](#inviting-guest-accounts)
+    - [Authentication Methods](#authentication-methods)
     - [Handling Null Values in Field Mapping](#handling-null-values-in-field-mapping)
       - [Example:](#example)
+    - [Limitations Without Exchange Online Connector](#limitations-without-exchange-online-connector)
+      - [ProxyAddress Expansion with Aliases](#proxyaddress-expansion-with-aliases)
+      - [Modifying showInAddressList](#modifying-showinaddresslist)
+      - [Mailbox Creation/Activation](#mailbox-creationactivation)
   - [Introduction](#introduction)
   - [Getting started](#getting-started)
     - [Provisioning PowerShell V2 connector](#provisioning-powershell-v2-connector)
@@ -32,6 +38,15 @@
     - [Authentication and Authorization](#authentication-and-authorization)
   - [Getting help](#getting-help)
   - [HelloID docs](#helloid-docs)
+
+## Supported features:
+| Feature                             | Supported | Actions                                 | Remarks                                                                                       |
+| ----------------------------------- | --------- | --------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **Account Lifecycle**               | ✅         | Create, Update, Enable, Disable, Delete |                                                                                               |
+| **Permissions**                     | ✅         | Retrieve, Grant, Revoke                 | Groups, licenses, teams, phoneAuthenticationMethods, emailAuthenticationMethods, userMfaState |
+| **Resources**                       | ✅         | -                                       | For groups and licenses                                                                       |
+| **Entitlement Import: Accounts**    | ✅         | -                                       |                                                                                               |
+| **Entitlement Import: Permissions** | ✅         | -                                       | For groups and licenses                                                                       |
 
 ## Requirements
 
@@ -216,15 +231,15 @@ The field mapping can be imported by using the _fieldMapping.json_ file.
 
 The following settings are required to connect to the API.
 
-| Setting                                                        | Description                                                                                                                               | Mandatory |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| App Registration Directory (tenant) ID                         | The ID to the Tenant in Microsoft Entra ID                                                                                                | Yes       |
-| App Registration Application (client) ID                       | The ID to the App Registration in Microsoft Entra ID                                                                                      | Yes       |
-| App Registration Client Secret                                 | The Client Secret to the App Registration in Microsoft Entra ID                                                                           | Yes       |
-| Delete the account when revoking the entitlement               | When toggled, this delete accounts when revoking the account entitlement.                                                                 | No        |
-| Set primary manager when an account is created                 | When toggled, this connector will calculate and set the manager upon creating an account.                                                 | No        |
-| Update manager when the account updated operation is performed | When toggled, this connector will calculate and set the manager upon updating an account.                                                 | No        |
-| IsDebug                                                        | When toggled, extra logging is shown. Note that this is only meant for debugging, please switch this off when in production.              | No        |
+| Setting                                                        | Description                                                                                                                  | Mandatory |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------- |
+| App Registration Directory (tenant) ID                         | The ID to the Tenant in Microsoft Entra ID                                                                                   | Yes       |
+| App Registration Application (client) ID                       | The ID to the App Registration in Microsoft Entra ID                                                                         | Yes       |
+| App Registration Client Secret                                 | The Client Secret to the App Registration in Microsoft Entra ID                                                              | Yes       |
+| Delete the account when revoking the entitlement               | When toggled, this delete accounts when revoking the account entitlement.                                                    | No        |
+| Set primary manager when an account is created                 | When toggled, this connector will calculate and set the manager upon creating an account.                                    | No        |
+| Update manager when the account updated operation is performed | When toggled, this connector will calculate and set the manager upon updating an account.                                    | No        |
+| IsDebug                                                        | When toggled, extra logging is shown. Note that this is only meant for debugging, please switch this off when in production. | No        |
 
 ## Connector setup
 
