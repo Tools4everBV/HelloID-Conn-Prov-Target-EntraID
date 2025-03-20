@@ -111,11 +111,11 @@ try {
 
     #region Revoke permission from account
     # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-assignlicense?view=graph-rest-1.0&tabs=http
-    $actionMessage = "revoking license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.reference)] from account"
+    $actionMessage = "revoking license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.skuId)] from account"
 
     $revokePermissionBody = @{
         addLicenses    = $null
-        removeLicenses = @($($actionContext.References.Permission.reference))
+        removeLicenses = @($($actionContext.References.Permission.skuId))
     }
             
     $baseUri = "https://graph.microsoft.com/"
@@ -135,12 +135,12 @@ try {
 
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
-                Message = "Revoked license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.reference)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+                Message = "Revoked license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.skuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
                 IsError = $false
             })
     }
     else {
-        Write-Warning "DryRun: Would revoke license [$($actionContext.References.Permission.reference)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+        Write-Warning "DryRun: Would revoke license [$($actionContext.References.Permission.skuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
     }
     #endregion Revoke permission from account
 }
@@ -162,7 +162,7 @@ catch {
     if ($auditMessage -like "*User does not have a corresponding license*") {
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
-                Message = "Skipped revoking license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.reference)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User does not have the corresponding license."
+                Message = "Skipped revoking license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.skuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User does not have the corresponding license."
                 IsError = $false
             })
     }
@@ -171,7 +171,7 @@ catch {
     elseif ($auditMessage -like "*License $($pRef.skuId) does not correspond to a valid company License*") {
         $auditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
-                Message = "Skipped revoking license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.reference)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: License does not correspond to a valid company license."
+                Message = "Skipped revoking license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.skuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: License does not correspond to a valid company license."
                 IsError = $false
             }) 
     }

@@ -148,7 +148,7 @@ try {
                         $account.id
                     )
                     PermissionReference = @{
-                        Reference = $assignedLicense
+                        SkuId = $assignedLicense
                     }
                     Description         = "License - $licenseName"
                     DisplayName         = $licenseName

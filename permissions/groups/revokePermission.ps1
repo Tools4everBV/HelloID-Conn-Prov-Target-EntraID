@@ -111,11 +111,11 @@ try {
 
     #region Revoke permission from account
     # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-delete-members?view=graph-rest-1.0&tabs=http
-    $actionMessage = "revoking group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.reference)] from account"
+    $actionMessage = "revoking group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.id)] from account"
 
     $baseUri = "https://graph.microsoft.com/"
     $revokePermissionSplatParams = @{
-        Uri         = "$($baseUri)/v1.0/groups/$($actionContext.References.Permission.reference)/members/$($actionContext.References.Account)/`$ref"
+        Uri         = "$($baseUri)/v1.0/groups/$($actionContext.References.Permission.id)/members/$($actionContext.References.Account)/`$ref"
         Headers     = $headers
         Method      = "DELETE"
         Verbose     = $false
@@ -129,12 +129,12 @@ try {
 
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
-                Message = "Revoked group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.reference)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+                Message = "Revoked group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.id)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
                 IsError = $false
             })
     }
     else {
-        Write-Warning "DryRun: Would revoke group [$($actionContext.References.Permission.reference)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+        Write-Warning "DryRun: Would revoke group [$($actionContext.References.Permission.id)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
     }
     #endregion Revoke permission from account
 }
@@ -151,10 +151,10 @@ catch {
         $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
 
-    if ($auditMessage -like "*Error code: Request_ResourceNotFound*" -and $auditMessage -like "*$($actionContext.References.Permission.reference)*") {
+    if ($auditMessage -like "*Error code: Request_ResourceNotFound*" -and $auditMessage -like "*$($actionContext.References.Permission.id)*") {
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
-                Message = "Skipped revoking group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.reference)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User is already no longer a member or the group no longer exists."
+                Message = "Skipped revoking group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.id)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User is already no longer a member or the group no longer exists."
                 IsError = $false
             })
     }

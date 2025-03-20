@@ -111,7 +111,7 @@ try {
 
     #region Grant permission to account
     # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0&tabs=http
-    $actionMessage = "granting group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.reference)] to account"
+    $actionMessage = "granting group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.id)] to account"
 
     $grantPermissionBody = @{
         "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)"
@@ -119,7 +119,7 @@ try {
             
     $baseUri = "https://graph.microsoft.com/"
     $grantPermissionSplatParams = @{
-        Uri         = "$($baseUri)/v1.0/groups/$($actionContext.References.Permission.reference)/members/$($actionContext.References.Account)/`$ref"
+        Uri         = "$($baseUri)/v1.0/groups/$($actionContext.References.Permission.id)/members/$($actionContext.References.Account)/`$ref"
         Headers     = $headers
         Method      = "POST"
         Body        = ($grantPermissionBody | ConvertTo-Json -Depth 10)
@@ -134,12 +134,12 @@ try {
 
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
-                Message = "Granted group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.reference)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+                Message = "Granted group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.id)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
                 IsError = $false
             })
     }
     else {
-        Write-Warning "DryRun: Would grant group [$($actionContext.References.Permission.reference)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+        Write-Warning "DryRun: Would grant group [$($actionContext.References.Permission.id)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
     }
     #endregion Grant permission to account
 }
@@ -159,7 +159,7 @@ catch {
     if ($auditMessage -like "*One or more added object references already exist for the following modified properties: 'members'*") {
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
-                Message = "Skipped granting group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.reference)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User is already a member of the group."
+                Message = "Skipped granting group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.id)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User is already a member of the group."
                 IsError = $false
             })
     }

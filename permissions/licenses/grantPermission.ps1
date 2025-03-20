@@ -111,12 +111,12 @@ try {
 
     #region Grant license to account
     # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-assignlicense?view=graph-rest-1.0&tabs=http
-    $actionMessage = "granting license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.reference)] to account"
+    $actionMessage = "granting license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.skuId)] to account"
 
     $grantPermissionBody = @{
         addLicenses    = @(
             @{
-                skuId = $($actionContext.References.Permission.reference)
+                skuId = $($actionContext.References.Permission.skuId)
             }
         )
         removeLicenses = $null
@@ -139,12 +139,12 @@ try {
 
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
-                Message = "Granted license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.reference)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+                Message = "Granted license [$($actionContext.PermissionDisplayName)] with skuid [$($actionContext.References.Permission.skuId)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
                 IsError = $false
             })
     }
     else {
-        Write-Warning "DryRun: Would grant license [$($actionContext.References.Permission.reference)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+        Write-Warning "DryRun: Would grant license [$($actionContext.References.Permission.skuId)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
     }
     #endregion Grant license to account
 }

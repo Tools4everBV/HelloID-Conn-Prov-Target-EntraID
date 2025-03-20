@@ -173,7 +173,7 @@ try {
 
         $permission = @{
             PermissionReference = @{
-                Reference = $entraIDGroup.id
+                Id = $entraIDGroup.id
             }       
             Description         = $description
             DisplayName         = $displayName
