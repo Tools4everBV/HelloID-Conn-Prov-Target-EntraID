@@ -1,18 +1,11 @@
 #################################################
-# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Permissions-Groups-Grant
-# Grant groupmembership to account
+# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Import
+# Correlate to account
 # PowerShell V2
 #################################################
+
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
-
-# Set debug logging
-switch ($actionContext.Configuration.isDebug) {
-    $true { $VerbosePreference = "Continue" }
-    $false { $VerbosePreference = "SilentlyContinue" }
-}
-$InformationPreference = "Continue"
-$WarningPreference = "Continue"
 
 #region functions
 function Resolve-MicrosoftGraphAPIError {
@@ -66,21 +59,30 @@ function Resolve-MicrosoftGraphAPIError {
         catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
-
-        Write-Output $httpErrorObj
+        
+        # Write-Output $httpErrorObj
+        return $httpErrorObj
     }
 }
 #endregion functions
 
 try {
-    #region Verify account reference
-    $actionMessage = "verifying account reference"
-    if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
-        throw "The account reference could not be found"
-    }
-    #endregion Verify account reference
+    Write-Information 'Starting target account import'
 
-    #region Create authorization headers
+    # Define properties to query
+    $importFields = $($actionContext.ImportFields)
+    $importFields = $importFields -replace '\..*', ''
+
+    # Add mandatory fields for HelloID to query and return
+    if ('id' -notin $importFields) { $importFields += 'id' }
+    if ('accountEnabled' -notin $importFields) { $importFields += 'accountEnabled ' }
+    if ('displayName' -notin $importFields) { $importFields += 'displayName' }
+    if ('userPrincipalName' -notin $importFields) { $importFields += 'userPrincipalName' }
+
+    # Convert to a ',' string
+    $fields = $importFields -join ','
+    Write-Information "Querying fields [$fields]"
+
     $actionMessage = "creating access token"
     $createAccessTokenBody = @{
         grant_type    = "client_credentials"
@@ -101,47 +103,51 @@ try {
 
     $actionMessage = "creating headers"
     $headers = @{
-        "Accept"           = "application/json"
-        "Authorization"    = "Bearer $($createAccessTokenResonse.access_token)"
-        "Content-Type"     = "application/json;charset=utf-8"
-        "Mwp-Api-Version"  = "1.0"
-        "ConsistencyLevel" = "eventual"
-    }
-    #endregion Create authorization headers
-
-    #region Grant permission to account
-    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0&tabs=http
-    $actionMessage = "granting group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.id)] to account"
-
-    $grantPermissionBody = @{
-        "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)"
-    }
-            
-    $baseUri = "https://graph.microsoft.com/"
-    $grantPermissionSplatParams = @{
-        Uri         = "$($baseUri)/v1.0/groups/$($actionContext.References.Permission.id)/members/$($actionContext.References.Account)/`$ref"
-        Headers     = $headers
-        Method      = "POST"
-        Body        = ($grantPermissionBody | ConvertTo-Json -Depth 10)
-        Verbose     = $false
-        ErrorAction = "Stop"
+        "Accept"          = "application/json"
+        "Authorization"   = "Bearer $($createAccessTokenResonse.access_token)"
+        "Content-Type"    = "application/json;charset=utf-8"
+        "Mwp-Api-Version" = "1.0"     
     }
 
-    if (-Not($actionContext.DryRun -eq $true)) {
-        Write-Verbose "SplatParams: $($grantPermissionSplatParams | ConvertTo-Json)"
+    # API docs: https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http
+    $actionMessage = "querying accounts"
+    $existingAccounts = @()
+    $uri = "https://graph.microsoft.com/v1.0/users?`$select=$fields"
+    do {
+        $getAccountsSplatParams = @{
+            Uri         = $uri
+            Headers     = $headers
+            Method      = 'GET'
+            ContentType = 'application/json; charset=utf-8'
+            Verbose     = $false
+            ErrorAction = "Stop"
+        }
+        $response = Invoke-RestMethod @getAccountsSplatParams
+        $existingAccounts += $response.value
+        Write-Information "Successfully queried [$($existingAccounts.count)] existing accounts"
+        $uri = $response.'@odata.nextLink'
+    } while ($uri)
 
-        $grantedPermission = Invoke-RestMethod @grantPermissionSplatParams
-
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = "Granted group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.id)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
-                IsError = $false
-            })
+    # Map the imported data to the account field mappings
+    foreach ($account in $existingAccounts) {
+        # Make sure the DisplayName has a value
+        if ([string]::IsNullOrEmpty($account.displayName)) {
+            $account.displayName = $account.id
+        }
+        # Make sure the Username has a value
+        if ([string]::IsNullOrEmpty($account.userPrincipalName)) {
+            $account.userPrincipalName = $account.id
+        }
+        # Return the result
+        Write-Output @{
+            AccountReference = $account.id
+            DisplayName      = $account.displayName
+            UserName         = $account.userPrincipalName
+            Enabled          = $account.accountEnabled
+            Data             = $account
+        }
     }
-    else {
-        Write-Warning "DryRun: Would grant group [$($actionContext.References.Permission.id)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
-    }
-    #endregion Grant permission to account
+    Write-Information 'Target account import completed'
 }
 catch {
     $ex = $PSItem
@@ -155,30 +161,6 @@ catch {
         $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
         $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
-
-    if ($auditMessage -like "*One or more added object references already exist for the following modified properties: 'members'*") {
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = "Skipped granting group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.id)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User is already a member of the group."
-                IsError = $false
-            })
-    }
-    else {
-        Write-Warning $warningMessage
-
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = $auditMessage
-                IsError = $true
-            })
-    }
-}
-finally {
-    # Check if auditLogs contains errors, if no errors are found, set success to true
-    if ($outputContext.AuditLogs.IsError -contains $true) {
-        $outputContext.Success = $false
-    }
-    else {
-        $outputContext.Success = $true
-    }
+    Write-Warning $warningMessage
+    Write-Error $auditMessage
 }
