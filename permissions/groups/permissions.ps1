@@ -197,7 +197,7 @@ try {
             @{
                 displayName    = $displayName
                 identification = @{
-                    Reference = $_.id
+                    Id = $_.id
                 }
             }
         )
