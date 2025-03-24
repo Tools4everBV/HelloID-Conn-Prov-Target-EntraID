@@ -119,7 +119,7 @@ try {
     $account = [PSCustomObject]$actionContext.Data.PsObject.Copy()
 
     # Define properties to query
-    $accountPropertiesToQuery = @("id") + $account.PsObject.Properties.Name | Select-Object -Unique
+  $accountPropertiesToQuery = @("id") + $outputContext.Data.PsObject.Properties.Name | Select-Object -Unique
 
     # Remove properties of account object with null-values
     $account.PsObject.Properties | ForEach-Object {
