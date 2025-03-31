@@ -47,6 +47,7 @@
        - `GroupMember.ReadWrite.All`: Read and write all group memberships.
        - `UserAuthenticationMethod.ReadWrite.All`: Read and write all users’ authentication methods.
        - `User.Invite.All`: Invite guest users to the organization.
+       - `User-Phone.ReadWrite.All`: Read and write all user mobile phone and business phones.
    - Create access credentials for your app:
      - Create a **client secret** for your app.
 
