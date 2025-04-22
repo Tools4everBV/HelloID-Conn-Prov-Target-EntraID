@@ -116,23 +116,27 @@ function ConvertTo-FlatObject {
 try {
     #region account
     # Define account object
-    $account = [PSCustomObject]$actionContext.Data.PsObject.Copy()
+    if ($actionContext.Data -ne $null) {
+        $account = [PSCustomObject]$actionContext.Data.PsObject.Copy()
+
+        # Remove properties of account object with null-values
+        $account.PsObject.Properties | ForEach-Object {
+            # Remove properties with null-values
+            if ($_.Value -eq $null) {
+                $account.PsObject.Properties.Remove("$($_.Name)")
+            }
+        }
+        # Convert the properties of account object containing "TRUE" or "FALSE" to boolean
+        $account = Convert-StringToBoolean $account
+
+        # Define properties to compare for update
+        $accountPropertiesToCompare = ConvertTo-FlatObject -Object $account | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name
+    }    
 
     # Define properties to query
-  $accountPropertiesToQuery = @("id") + $outputContext.Data.PsObject.Properties.Name | Select-Object -Unique
-
-    # Remove properties of account object with null-values
-    $account.PsObject.Properties | ForEach-Object {
-        # Remove properties with null-values
-        if ($_.Value -eq $null) {
-            $account.PsObject.Properties.Remove("$($_.Name)")
-        }
-    }
-    # Convert the properties of account object containing "TRUE" or "FALSE" to boolean
-    $account = Convert-StringToBoolean $account
-
-    # Define properties to compare for update
-    $accountPropertiesToCompare = ConvertTo-FlatObject -Object $account | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name
+    # Automatically replaced by HelloID for compatibility with release 2025.04
+    # $accountPropertiesToQuery = @("id") + $account.PsObject.Properties.Name | Select-Object -Unique
+    $accountPropertiesToQuery = @("id") + $outputContext.Data.PsObject.Properties.Name | Select-Object -Unique
     #endRegion account
 
     #region Verify account reference
@@ -211,6 +215,10 @@ try {
     if (($correlatedAccount | Measure-Object).count -eq 1) {
         if ($actionContext.Configuration.deleteAccount -eq $true) {
             $actionAccount = "Delete"
+        }
+        elseif ($actionContext.Data -eq $null){
+            Write-Warning "Connector is configured to skip account deletion on revoke. Only updates will be made. But since no fields are mapped for the delete event, nothing will happen."
+            $actionAccount = "NoChanges"
         }
         else {
             $actionMessage = "comparing current account to mapped properties"
