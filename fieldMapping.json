@@ -143,7 +143,7 @@
       ]
     },
     {
-      "Name": "displayName",
+      "Name": "DisplayName",
       "Description": "[Required] The name displayed in the address book for the user. This is usually the combination of the user's first name, middle initial, and last name.\nMaximum length is 256 characters.",
       "Type": "Text",
       "MappingActions": [
@@ -453,7 +453,7 @@
       ]
     },
     {
-      "Name": "department",
+      "Name": "Department",
       "Description": "The name of the department in which the user works.\nMaximum length is 64 characters.\nNote: as the minimum length is 1 character, this is a complex mapping to handle empty values as a space.",
       "Type": "Text",
       "MappingActions": [
