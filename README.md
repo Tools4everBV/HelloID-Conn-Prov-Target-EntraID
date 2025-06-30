@@ -18,10 +18,16 @@
     - [Managing Permissions in Teams](#managing-permissions-in-teams)
     - [Creating Guest Accounts](#creating-guest-accounts)
     - [Inviting Guest Accounts](#inviting-guest-accounts)
+    - [Authentication Methods](#authentication-methods)
     - [Handling Null Values in Field Mapping](#handling-null-values-in-field-mapping)
       - [Example:](#example)
+    - [Limitations Without Exchange Online Connector](#limitations-without-exchange-online-connector)
+      - [ProxyAddress Expansion with Aliases](#proxyaddress-expansion-with-aliases)
+      - [Modifying showInAddressList](#modifying-showinaddresslist)
+      - [Mailbox Creation/Activation](#mailbox-creationactivation)
   - [Introduction](#introduction)
   - [Getting started](#getting-started)
+    - [HelloID Icon URL](#helloid-icon-url)
     - [Provisioning PowerShell V2 connector](#provisioning-powershell-v2-connector)
       - [Correlation configuration](#correlation-configuration)
       - [Field mapping](#field-mapping)
@@ -184,6 +190,13 @@ For further details, refer to the following pages in the Microsoft Docs:
 - [Use the Microsoft Graph API](https://learn.microsoft.com/en-us/graph/use-the-api).
 - [User Properties](https://learn.microsoft.com/en-us/graph/api/resources/user?view=graph-rest-1.0#properties).
 - [Supported User Properties for Correlation](https://learn.microsoft.com/en-us/graph/aad-advanced-queries?tabs=http#user-properties).
+
+### HelloID Icon URL
+URL of the icon used for the HelloID Provisioning target system.
+
+```
+https://raw.githubusercontent.com/Tools4everBV/HelloID-Conn-Prov-Target-EntraID/refs/heads/main/Icon.png
+```
 
 ### Provisioning PowerShell V2 connector
 
