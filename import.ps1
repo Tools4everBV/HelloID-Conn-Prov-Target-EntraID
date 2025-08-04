@@ -144,6 +144,7 @@ try {
             DisplayName      = $account.displayName
             UserName         = $account.userPrincipalName
             Enabled          = $account.accountEnabled
+            # Enabled          = $false # When using correlate only, no account access is granted. This should be false for the import report.
             Data             = $account
         }
     }
