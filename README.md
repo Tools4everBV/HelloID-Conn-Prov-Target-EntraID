@@ -1,5 +1,9 @@
 # HelloID-Conn-Prov-Target-Microsoft-Entra-ID
 
+> [!CAUTION]
+> Use the new repository: [HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Exchange-Online](https://github.com/Tools4everBV/HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Exchange-Online).
+> This repository is publicly archived and will be removed on 2 February.
+
 > [!IMPORTANT]
 > This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.
 
